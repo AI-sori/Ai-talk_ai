@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>읽기 능력 진단 시스템</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>읽기 능력 진단 시스템</h1>
+        
+        <div id="state-indicator" class="status">
+            <p>현재 상태: <span id="current-state">준비</span></p>
+        </div>
+        
+        <div class="video-container">
+            <h2>카메라 피드</h2>
+            <img id="video-stream" src="{{ url_for('static', filename='img/placeholder.png') }}" alt="비디오 스트림">
+        </div>
+        
+        <div id="text-container" class="hidden">
+            <h2 id="text-title"></h2>
+            <div id="text-content"></div>
+            
+            <div class="text-navigation">
+                <button id="prev-text">이전 텍스트</button>
+                <button id="next-text">다음 텍스트</button>
+            </div>
+        </div>
+        
+        <div id="reading-info" class="hidden">
+            <p>읽기 시간: <span id="reading-time">0초</span></p>
+        </div>
+        
+        <div id="diagnosis-info" class="hidden">
+            <p>진단 중... <span id="remaining-time">5</span>초</p>
+        </div>
+        
+        <div id="report-container" class="hidden">
+            <h2>진단 완료!</h2>
+            <p>진단 결과를 확인하려면 아래 버튼을 클릭하세요.</p>
+            <div class="report-buttons">
+                <button id="generate-pdf">PDF 보고서 생성</button>
+                <a id="download-pdf" class="hidden" href="#">PDF 다운로드</a>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button id="start-camera">카메라 시작</button>
+            <button id="stop-camera">카메라 중지</button>
+            <button id="start-session">진단 시작</button>
+            <button id="reading-start" class="hidden">읽기 시작</button>
+            <button id="diagnosis-start" class="hidden">진단 완료</button>
+            <button id="reset-session" class="hidden">처음으로</button>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

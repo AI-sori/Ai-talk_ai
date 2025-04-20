@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>읽기 능력 진단 리포트</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>읽기 능력 진단 리포트</h1>
+
+        <div id="report-info">
+            <p>진단이 완료되었습니다. 아래 버튼을 클릭하여 PDF 보고서를 생성하고 다운로드할 수 있습니다.</p>
+        </div>
+
+        <div id="report-container">
+            <h2>진단 완료!</h2>
+            <p>진단 결과를 확인하려면 아래 버튼을 클릭하세요.</p>
+            
+            <!-- PDF 보고서 생성 버튼 -->
+            <div class="report-buttons">
+                <button id="generate-pdf">PDF 보고서 생성</button>
+                <a id="download-pdf" class="hidden" href="#">PDF 다운로드</a>
+            </div>
+        </div>
+
+        <div id="response-container">
+            <p id="response-message">응답을 기다리는 중...</p>
+        </div>
+
+        <div class="controls">
+            <button id="reset-session">새로 시작</button>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+        // Socket.IO 연결 설정
+        const socket = io.connect();
+
+        // PDF 생성 버튼 클릭 시
+        document.getElementById('generate-pdf').addEventListener('click', function() {
+            socket.emit('generate_pdf');
+            document.getElementById('response-message').innerText = 'PDF 생성 중...';
+        });
+
+        // PDF 다운로드 링크 설정
+        socket.on('pdf_generated', function(data) {
+            const pdfPath = data.path;
+            const downloadLink = document.getElementById('download-pdf');
+            downloadLink.href = '/download_pdf/' + pdfPath;
+            downloadLink.classList.remove('hidden');
+            document.getElementById('response-message').innerText = 'PDF 보고서 생성 완료! 다운로드 가능';
+        });
+
+        // 진단 완료 메시지
+        socket.on('diagnosis_complete', function(data) {
+            const result = data.result;
+            document.getElementById('response-message').innerText = `진단 완료! ${result}`;
+        });
+        
+        // 새로 시작 버튼 클릭 시
+        document.getElementById('reset-session').addEventListener('click', function() {
+            window.location.href = '/';
+        });
+    </script>
+</body>
+</html>

@@ -20,7 +20,7 @@
 ## 가상환경 생성 (권장)
 python -m venv .venv
 ### 가상환경 활성화
-# Windows:
+### Windows:
 .venv\Scripts\activate
 ### macOS/Linux:
 source venv/bin/activate
@@ -32,7 +32,7 @@ pip install mediapipe
 ## 모든 기능 한번에 설치
 pip install -r requirements.txt
 
-# 브라우저에서 `http://localhost:5000` 접속
+### 브라우저에서 `http://localhost:5000` 접속
 
 ## 📖 사용 방법
 

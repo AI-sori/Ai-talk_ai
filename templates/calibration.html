@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>시선추적 보정</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .calibration-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            background: #f0f0f0;
+            cursor: none;
+        }
+        
+        .calibration-point {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: red;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            cursor: pointer;
+            animation: pulse 1s infinite;
+        }
+        
+        .calibration-point.active {
+            background: #ff6b6b;
+            box-shadow: 0 0 20px rgba(255, 107, 107, 0.5);
+        }
+        
+        @keyframes pulse {
+            0% { transform: translate(-50%, -50%) scale(1); }
+            50% { transform: translate(-50%, -50%) scale(1.2); }
+            100% { transform: translate(-50%, -50%) scale(1); }
+        }
+        
+        .calibration-info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 1000;
+        }
+        
+        .video-preview {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 200px;
+            height: 150px;
+            border: 2px solid #333;
+            border-radius: 8px;
+            z-index: 1000;
+        }
+        
+        .calibration-progress {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+        }
+        
+        .btn-back {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div class="calibration-container" id="calibrationContainer">
+        <div class="calibration-info">
+            <h3>시선 보정</h3>
+            <p>빨간 점을 순서대로 응시해주세요</p>
+            <p>각 점을 3초간 바라본 후 자동으로 다음 점으로 이동합니다</p>
+        </div>
+        
+        <video id="video" class="video-preview" autoplay muted></video>
+        <canvas id="canvas" style="display: none;"></canvas>
+        
+        <div class="calibration-progress">
+            <span id="progressText">준비 중...</span>
+        </div>
+        
+        <button class="btn secondary btn-back" onclick="goBack()">메인으로 돌아가기</button>
+        
+        <!-- 보정 포인트들 (JavaScript로 동적 생성) -->
+    </div>
+
+    <script>
+        let currentPointIndex = 0;
+        let calibrationPoints = [];
+        let video, canvas, ctx;
+        let captureInterval;
+        let pointTimeout;
+        
+        // 보정 포인트 위치 (화면 비율 기준)
+        const calibrationPositions = [
+            { x: 0.1, y: 0.1 },   // 좌상
+            { x: 0.9, y: 0.1 },   // 우상
+            { x: 0.5, y: 0.5 },   // 중앙
+            { x: 0.1, y: 0.9 },   // 좌하
+            { x: 0.9, y: 0.9 },   // 우하
+            { x: 0.3, y: 0.3 },   // 추가 점들
+            { x: 0.7, y: 0.3 },
+            { x: 0.3, y: 0.7 },
+            { x: 0.7, y: 0.7 }
+        ];
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeCalibration();
+        });
+        
+        function initializeCalibration() {
+            video = document.getElementById('video');
+            canvas = document.getElementById('canvas');
+            ctx = canvas.getContext('2d');
+            
+            // 웹캠 시작
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(stream => {
+                    video.srcObject = stream;
+                    video.onloadedmetadata = () => {
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        createCalibrationPoints();
+                    };
+                })
+                .catch(err => {
+                    console.error('웹캠 접근 오류:', err);
+                    alert('웹캠에 접근할 수 없습니다.');
+                });
+        }
+        
+        function createCalibrationPoints() {
+            const container = document.getElementById('calibrationContainer');
+            
+            calibrationPositions.forEach((pos, index) => {
+                const point = document.createElement('div');
+                point.className = 'calibration-point';
+                point.id = `point-${index}`;
+                point.style.left = `${pos.x * 100}%`;
+                point.style.top = `${pos.y * 100}%`;
+                point.style.display = 'none';
+                container.appendChild(point);
+            });
+            
+            startCalibration();
+        }
+        
+        function startCalibration() {
+            document.getElementById('progressText').textContent = 
+                `보정 점 ${currentPointIndex + 1}/${calibrationPositions.length}`;
+            
+            showCurrentPoint();
+        }
+        
+        function showCurrentPoint() {
+            // 모든 점 숨기기
+            document.querySelectorAll('.calibration-point').forEach(point => {
+                point.style.display = 'none';
+                point.classList.remove('active');
+            });
+            
+            if (currentPointIndex >= calibrationPositions.length) {
+                completeCalibration();
+                return;
+            }
+            
+            // 현재 점 표시
+            const currentPoint = document.getElementById(`point-${currentPointIndex}`);
+            currentPoint.style.display = 'block';
+            currentPoint.classList.add('active');
+            
+            // 3초 후 캡처 및 다음 점으로 이동
+            pointTimeout = setTimeout(() => {
+                captureCalibrationData();
+                currentPointIndex++;
+                showCurrentPoint();
+            }, 3000);
+            
+            // 진행률 업데이트
+            document.getElementById('progressText').textContent = 
+                `보정 점 ${currentPointIndex + 1}/${calibrationPositions.length} - 3초간 응시하세요`;
+        }
+        
+        function captureCalibrationData() {
+            // 현재 프레임 캡처 (고해상도)
+            const targetWidth = Math.max(640, video.videoWidth);
+            const targetHeight = Math.max(480, video.videoHeight);
+            
+            // 임시 캔버스로 크기 조정
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = targetWidth;
+            tempCanvas.height = targetHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+            
+            // 고해상도로 그리기
+            tempCtx.drawImage(video, 0, 0, targetWidth, targetHeight);
+            const frameData = tempCanvas.toDataURL('image/jpeg', 0.8);
+            
+            console.log(`보정 프레임 크기: ${targetWidth}x${targetHeight}`);
+            
+            // 현재 포인트 위치
+            const pos = calibrationPositions[currentPointIndex];
+            const targetX = pos.x * window.innerWidth;
+            const targetY = pos.y * window.innerHeight;
+            
+            // 서버에 보정 데이터 전송
+            fetch('/calibrate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    frame: frameData,
+                    target_x: targetX,
+                    target_y: targetY
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    console.log(`보정 점 ${currentPointIndex + 1} 완료`);
+                } else {
+                    console.error('보정 오류:', data.message);
+                }
+            })
+            .catch(error => {
+                console.error('보정 요청 오류:', error);
+            });
+        }
+        
+        function completeCalibration() {
+            document.getElementById('progressText').textContent = '보정 완료! 메인 페이지로 돌아갑니다...';
+            
+            // 보정 완료 신호 전송
+            fetch('/start_tracking', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('보정 결과:', data);
+                if (data.status === 'success') {
+                    // URL 파라미터와 함께 메인 페이지로 이동
+                    setTimeout(() => {
+                        window.location.href = '/?calibrated=true';
+                    }, 2000);
+                } else {
+                    alert('보정 설정 오류: ' + data.message);
+                    // 실패해도 메인으로 돌아가기
+                    setTimeout(() => {
+                        window.location.href = '/';
+                    }, 1000);
+                }
+            })
+            .catch(error => {
+                console.error('보정 완료 요청 오류:', error);
+                alert('보정 완료 처리 중 오류가 발생했습니다.');
+                // 에러가 발생해도 메인으로 돌아가기
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1000);
+            });
+        }
+        
+        function goBack() {
+            if (confirm('보정을 중단하고 메인 페이지로 돌아가시겠습니까?')) {
+                window.location.href = '/';
+            }
+        }
+        
+        // 페이지 종료 시 정리
+        window.addEventListener('beforeunload', function() {
+            if (pointTimeout) {
+                clearTimeout(pointTimeout);
+            }
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+        });
+    </script>
+</body>
+</html>

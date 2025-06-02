@@ -17,19 +17,19 @@
 - 웹캠
 - 마이크
 
-# 가상환경 생성 (권장)
+## 가상환경 생성 (권장)
 python -m venv .venv
-# 가상환경 활성화
+### 가상환경 활성화
 # Windows:
-venv\Scripts\activate
-# macOS/Linux:
+.venv\Scripts\activate
+### macOS/Linux:
 source venv/bin/activate
 
-# 실제 음성 인식을 원하는 경우
+### 실제 음성 인식을 원하는 경우
 pip install openai-whisper librosa
-# 실제 얼굴 감지를 원하는 경우  
+### 실제 얼굴 감지를 원하는 경우  
 pip install mediapipe
-# 모든 기능 한번에 설치
+## 모든 기능 한번에 설치
 pip install -r requirements.txt
 
 # 브라우저에서 `http://localhost:5000` 접속

@@ -48,7 +48,11 @@ except ImportError as e:
                 'comprehension': '81.5%'
             }
 
-app = Flask(__name__)
+import os
+
+app = Flask(__name__, 
+           template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates'),
+           static_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static'))
 
 # 전역 변수
 gaze_tracker = None
@@ -370,5 +374,6 @@ def generate_report():
         return jsonify({"status": "error", "message": f"리포트 생성 실패: {str(e)}"})
 
 if __name__ == '__main__':
-    print("[INFO] Flask 서버 시작...")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    print(f"[INFO] Flask 서버 시작... 포트: {port}")
+    app.run(debug=False, host='0.0.0.0', port=port)

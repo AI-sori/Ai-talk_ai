@@ -1,7 +1,7 @@
 # 필수 패키지
 Flask==2.3.3
-#opencv-python-headless==4.8.1.78
-#numpy==1.24.3
+opencv-python-headless==4.8.1.78
+numpy==1.24.3
 #Pillow==10.0.1
 
 # 선택적 패키지 (더 나은 기능을 위해 권장)

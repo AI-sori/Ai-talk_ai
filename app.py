@@ -8,8 +8,6 @@ import base64
 import numpy as np
 import pymysql
 import gc  # 가비지 컬렉션
-import requests
-
 # pdf 관련
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle

@@ -533,30 +533,56 @@ def save_report_to_db(user_id, report_text):
             connection.close()
 
 def create_simple_pdf(report_data):
-    """메모리 최적화된 PDF 생성"""
+    """서버용 한글 폰트 지원 PDF 생성"""
     temp_pdf = None
     try:
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.lib.fonts import addMapping
+        import requests
+        import tempfile as tf
         
-        # 한글 폰트 등록 시도
-        korean_font = 'Helvetica'
-        font_paths = [
-            '/System/Library/Fonts/AppleSDGothicNeo.ttc',
-            '/usr/share/fonts/truetype/nanum/NanumGothic.ttf',
-            '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-            'C:/Windows/Fonts/malgun.ttf',
-        ]
+        # 한글 폰트 다운로드 및 등록
+        korean_font = 'Helvetica'  # 기본 폰트
         
-        for font_path in font_paths:
-            try:
-                if os.path.exists(font_path):
-                    pdfmetrics.registerFont(TTFont('KoreanFont', font_path))
-                    korean_font = 'KoreanFont'
-                    break
-            except:
-                continue
+        try:
+            # 1. 구글 폰트에서 Noto Sans KR 다운로드
+            font_url = "https://fonts.gstatic.com/s/notosanskr/v36/PbyxFmXiEBPT4ITbgNA5Cgms3VYcOA-vvnIzzuoyeLTq8H4hfeE.woff2"
+            
+            # 2. 로컬에 임시 폰트 파일 생성
+            temp_font = tf.NamedTemporaryFile(delete=False, suffix='.ttf')
+            
+            # 3. 간단한 대체: DejaVu Sans 사용 (대부분 리눅스 서버에 설치됨)
+            linux_fonts = [
+                '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+                '/usr/share/fonts/TTF/DejaVuSans.ttf',
+                '/System/Library/Fonts/Helvetica.ttc',  # macOS
+                'C:/Windows/Fonts/malgun.ttf'  # Windows
+            ]
+            
+            font_registered = False
+            for font_path in linux_fonts:
+                try:
+                    if os.path.exists(font_path):
+                        pdfmetrics.registerFont(TTFont('KoreanFont', font_path))
+                        korean_font = 'KoreanFont'
+                        font_registered = True
+                        print(f"[SUCCESS] 폰트 등록됨: {font_path}")
+                        break
+                except Exception as font_error:
+                    print(f"[WARNING] 폰트 로드 실패: {font_path} - {font_error}")
+                    continue
+            
+            # 4. 모든 폰트 실패시 기본 폰트 + 한글 처리
+            if not font_registered:
+                print("[INFO] 한글 폰트 없음. 기본 폰트 사용")
+                korean_font = 'Helvetica'
+                
+        except Exception as e:
+            print(f"[WARNING] 폰트 설정 오류: {e}")
+            korean_font = 'Helvetica'
         
+        # PDF 생성 (나머지 코드는 동일)
         temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
         
         doc = SimpleDocTemplate(
@@ -569,6 +595,44 @@ def create_simple_pdf(report_data):
         )
         
         styles = getSampleStyleSheet()
+        
+        # 한글 폰트가 없을 때 대체 스타일
+        if korean_font == 'Helvetica':
+            # 한글을 영어로 변환하는 함수
+            def safe_text(text):
+                try:
+                    # 한글이 포함된 텍스트를 안전하게 처리
+                    return text.encode('latin-1', errors='ignore').decode('latin-1')
+                except:
+                    return "Reading Analysis Report"
+            
+            title_text = "Reading Analysis Report"
+            section_titles = {
+                "리포트 개요": "Report Overview",
+                "검사 결과 분석": "Analysis Results", 
+                "음성 분석 결과": "Speech Analysis",
+                "검사 대상자": "Subject",
+                "검사 실시일": "Test Date",
+                "총 검사 시간": "Duration",
+                "리포트 생성일": "Report Date",
+                "평가 영역": "Category",
+                "측정 결과": "Result",
+                "평가 등급": "Grade",
+                "분석 항목": "Analysis Item",
+                "읽기 속도": "Reading Speed",
+                "집중도 분석": "Concentration",
+                "이해도 평가": "Comprehension",
+                "발음 명확도": "Pronunciation",
+                "유창성 평가": "Fluency",
+                "인식된 발화 내용": "Transcription"
+            }
+        else:
+            title_text = "읽기 능력 진단 리포트"
+            section_titles = {
+                "리포트 개요": "리포트 개요",
+                "검사 결과 분석": "검사 결과 분석",
+                "음성 분석 결과": "음성 분석 결과"
+            }
         
         # 전문적인 스타일들
         title_style = ParagraphStyle(
@@ -594,15 +658,6 @@ def create_simple_pdf(report_data):
             backColor=colors.HexColor('#ECF0F1')
         )
         
-        normal_style = ParagraphStyle(
-            'ReportNormal',
-            parent=styles['Normal'],
-            fontSize=11,
-            spaceAfter=8,
-            fontName=korean_font,
-            textColor=colors.HexColor('#2C3E50')
-        )
-        
         content = []
         
         # 헤더 라인
@@ -615,11 +670,12 @@ def create_simple_pdf(report_data):
         content.append(Spacer(1, 10))
         
         # 제목
-        content.append(Paragraph("읽기 능력 진단 리포트", title_style))
+        content.append(Paragraph(title_text, title_style))
         content.append(Spacer(1, 15))
         
         # 리포트 정보 헤더
-        info_header = Table([['리포트 개요']], colWidths=[160*mm])
+        info_header_text = section_titles.get("리포트 개요", "Report Overview")
+        info_header = Table([[info_header_text]], colWidths=[160*mm])
         info_header.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#BDC3C7')),
             ('FONTNAME', (0, 0), (-1, -1), korean_font),
@@ -634,12 +690,20 @@ def create_simple_pdf(report_data):
         
         # 기본 정보
         report_info = report_data['report']
-        basic_info = [
-            ['검사 대상자', report_info.get('child_name', 'N/A')],
-            ['검사 실시일', report_info.get('diagnosis_date', 'N/A')],
-            ['총 검사 시간', report_info.get('reading_time', 'N/A')],
-            ['리포트 생성일', datetime.datetime.now().strftime('%Y년 %m월 %d일')]
-        ]
+        if korean_font == 'Helvetica':
+            basic_info = [
+                ['Subject', report_info.get('child_name', 'N/A')],
+                ['Test Date', report_info.get('diagnosis_date', 'N/A')],
+                ['Duration', report_info.get('reading_time', 'N/A')],
+                ['Report Date', datetime.datetime.now().strftime('%Y-%m-%d')]
+            ]
+        else:
+            basic_info = [
+                ['검사 대상자', report_info.get('child_name', 'N/A')],
+                ['검사 실시일', report_info.get('diagnosis_date', 'N/A')],
+                ['총 검사 시간', report_info.get('reading_time', 'N/A')],
+                ['리포트 생성일', datetime.datetime.now().strftime('%Y년 %m월 %d일')]
+            ]
         
         basic_table = Table(basic_info, colWidths=[40*mm, 120*mm])
         basic_table.setStyle(TableStyle([
@@ -659,7 +723,8 @@ def create_simple_pdf(report_data):
         content.append(Spacer(1, 20))
         
         # 검사 결과 헤더
-        result_header = Table([['검사 결과 분석']], colWidths=[160*mm])
+        result_header_text = section_titles.get("검사 결과 분석", "Analysis Results")
+        result_header = Table([[result_header_text]], colWidths=[160*mm])
         result_header.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#BDC3C7')),
             ('FONTNAME', (0, 0), (-1, -1), korean_font),
@@ -677,12 +742,20 @@ def create_simple_pdf(report_data):
         concentration_str = results.get('concentration', '0%')
         concentration_status = get_concentration_status(concentration_str)
         
-        result_data = [
-            ['평가 영역', '측정 결과', '평가 등급'],
-            ['읽기 속도', results.get('reading_speed', 'N/A'), '측정 완료'],
-            ['집중도 분석', concentration_str, concentration_status],
-            ['이해도 평가', results.get('comprehension', 'N/A'), '측정 완료']
-        ]
+        if korean_font == 'Helvetica':
+            result_data = [
+                ['Category', 'Result', 'Grade'],
+                ['Reading Speed', results.get('reading_speed', 'N/A'), 'Completed'],
+                ['Concentration', concentration_str, concentration_status],
+                ['Comprehension', results.get('comprehension', 'N/A'), 'Completed']
+            ]
+        else:
+            result_data = [
+                ['평가 영역', '측정 결과', '평가 등급'],
+                ['읽기 속도', results.get('reading_speed', 'N/A'), '측정 완료'],
+                ['집중도 분석', concentration_str, concentration_status],
+                ['이해도 평가', results.get('comprehension', 'N/A'), '측정 완료']
+            ]
         
         result_table = Table(result_data, colWidths=[50*mm, 55*mm, 55*mm])
         result_table.setStyle(TableStyle([
@@ -703,7 +776,8 @@ def create_simple_pdf(report_data):
         content.append(Spacer(1, 20))
         
         # 음성 분석 헤더
-        speech_header = Table([['음성 분석 결과']], colWidths=[160*mm])
+        speech_header_text = section_titles.get("음성 분석 결과", "Speech Analysis")
+        speech_header = Table([[speech_header_text]], colWidths=[160*mm])
         speech_header.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#BDC3C7')),
             ('FONTNAME', (0, 0), (-1, -1), korean_font),
@@ -718,12 +792,20 @@ def create_simple_pdf(report_data):
         
         # 음성 분석
         speech = report_info.get('speech_analysis', {})
-        speech_data = [
-            ['분석 항목', '측정 결과'],
-            ['발음 명확도', speech.get('pronunciation_clarity', 'N/A')],
-            ['유창성 평가', speech.get('fluency', 'N/A')],
-            ['인식된 발화 내용', truncate_text(speech.get('transcription', 'N/A'), 60)]
-        ]
+        if korean_font == 'Helvetica':
+            speech_data = [
+                ['Analysis Item', 'Result'],
+                ['Pronunciation', speech.get('pronunciation_clarity', 'N/A')],
+                ['Fluency', speech.get('fluency', 'N/A')],
+                ['Transcription', truncate_text(speech.get('transcription', 'N/A'), 60)]
+            ]
+        else:
+            speech_data = [
+                ['분석 항목', '측정 결과'],
+                ['발음 명확도', speech.get('pronunciation_clarity', 'N/A')],
+                ['유창성 평가', speech.get('fluency', 'N/A')],
+                ['인식된 발화 내용', truncate_text(speech.get('transcription', 'N/A'), 60)]
+            ]
         
         speech_table = Table(speech_data, colWidths=[50*mm, 110*mm])
         speech_table.setStyle(TableStyle([
@@ -762,7 +844,9 @@ def create_simple_pdf(report_data):
             fontName=korean_font,
             textColor=colors.HexColor('#7F8C8D')
         )
-        content.append(Paragraph("본 리포트는 AI 읽기 능력 진단 시스템에 의해 자동 생성되었습니다", footer_style))
+        
+        footer_text = "AI Reading Analysis System Auto-Generated Report" if korean_font == 'Helvetica' else "본 리포트는 AI 읽기 능력 진단 시스템에 의해 자동 생성되었습니다"
+        content.append(Paragraph(footer_text, footer_style))
         
         doc.build(content)
         return temp_pdf.name

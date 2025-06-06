@@ -537,34 +537,34 @@ function displayReport(report) {
     }
     
     const balancedReport = `
-📚 **${r.child_name}의 읽기 분석 리포트**
+📚 ${r.child_name}의 읽기 분석 리포트
 
-📅 **진단날짜:** ${r.diagnosis_date.replace(/-/g, '.')}
-⏰ **총 읽기시간:** ${timeText} (집중시간: ${focusText})
+📅 진단날짜: ${r.diagnosis_date.replace(/-/g, '.')}
+⏰ 총 읽기시간: ${timeText} (집중시간: ${focusText})
 
-📊 **읽기 능력 분석**
-• **읽기속도:** ${speedLevel}
-• **집중력:** ${concentrationLevel}
-• **이해력:** ${comprehensionLevel}
+📊읽기 능력 분석
+• 읽기속도: ${speedLevel}
+• 집중력: ${concentrationLevel}
+• 이해력: ${comprehensionLevel}
 
-🎤 **음성 분석 결과**
-• **발음 명확도:** ${clarityLevel} (${r.speech_analysis.pronunciation_clarity})
-• **말하기 유창성:** ${fluencyLevel} (${r.speech_analysis.fluency})
-• **말하기 속도:** ${r.speech_analysis.speaking_rate}
+🎤 음성 분석 결과
+• 발음 명확도: ${clarityLevel} (${r.speech_analysis.pronunciation_clarity})
+• 말하기 유창성: ${fluencyLevel} (${r.speech_analysis.fluency})
+• 말하기 속도: ${r.speech_analysis.speaking_rate}
 
-💬 **아이가 말한 내용:**
+💬 아이가 말한 내용:
 "${r.speech_analysis.transcription}"
 
-👀 **시선 패턴:**
+👀 시선 패턴:
 ${r.eye_tracking.issues === '정상' ? '✅ 자연스러운 시선 움직임을 보였어요!' : `⚠️ ${r.eye_tracking.issues} 현상이 관찰되었어요.`}
 
-💡 **종합 피드백**
+💡 종합 피드백
 ${feedback}
 
-📝 **맞춤 추천 활동**
+📝 맞춤 추천 활동
 ${r.feedback.recommended_activities.slice(0, 4).map(activity => `• ${activity}`).join('\n')}
 
-📌 **다음 검사 추천일:** ${r.feedback.next_diagnosis_date.replace(/-/g, '.')}
+📌 다음 검사 추천일: ${r.feedback.next_diagnosis_date.replace(/-/g, '.')}
     `.trim();
     
     el.reportContent.textContent = balancedReport;
@@ -581,20 +581,75 @@ ${r.feedback.recommended_activities.slice(0, 4).map(activity => `• ${activity}
 }
 
 // 리포트 다운로드
-function downloadReport() {
-    const text = el.reportContent.textContent;
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
+// main.js에서 downloadPDFReport 함수 수정
+async function downloadPDFReport() {
+    const childName = document.getElementById('childName').value.trim();
+    const userId = parseInt(document.getElementById('userId').value) || 1;
     
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `리포트_${el.childName.value}_${new Date().toISOString().slice(0,10)}.txt`;
-    a.click();
+    if (!childName) {
+        alert('아동 이름을 입력해주세요.');
+        return;
+    }
     
-    URL.revokeObjectURL(url);
-    updateStatus('리포트 다운로드 완료!', 'success');
+    // lastAudioResult 체크 부분 수정
+    const audioResult = window.lastAudioResult || {
+        transcription: '음성 분석 결과 없음',
+        fluency: '0.0%',
+        pronunciation_clarity: '0.0%',
+        comprehension: '0.0%'
+    };
+    
+    try {
+        updateStatus('📄 PDF 생성 중...', 'processing');
+        
+        const response = await fetch('/download_pdf_report', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                child_name: childName,
+                user_id: userId,
+                audio_result: audioResult  // lastAudioResult 대신 audioResult 사용
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            // Base64를 Blob으로 변환
+            const pdfData = atob(result.pdf_data);
+            const pdfArray = new Uint8Array(pdfData.length);
+            for (let i = 0; i < pdfData.length; i++) {
+                pdfArray[i] = pdfData.charCodeAt(i);
+            }
+            const pdfBlob = new Blob([pdfArray], { type: 'application/pdf' });
+            
+            // 다운로드
+            const downloadUrl = URL.createObjectURL(pdfBlob);
+            const downloadLink = document.createElement('a');
+            downloadLink.href = downloadUrl;
+            downloadLink.download = result.filename;
+            downloadLink.click();
+            
+            URL.revokeObjectURL(downloadUrl);
+            updateStatus('✅ PDF 다운로드 완료!', 'success');
+            
+        } else {
+            throw new Error(result.message);
+        }
+        
+    } catch (error) {
+        console.error('PDF 다운로드 오류:', error);
+        updateStatus(`❌ PDF 생성 실패: ${error.message}`, 'error');
+    }
 }
 
+// 기존 generateReport 함수에서 PDF 버튼 활성화 부분만 수정
+// 리포트 생성 완료 후 이 부분 추가:
+const downloadBtn = document.getElementById('downloadReportBtn');
+downloadBtn.disabled = false;
+downloadBtn.onclick = downloadPDFReport;  // 이 줄만 변경
 // CSS 추가
 const style = document.createElement('style');
 style.textContent = `

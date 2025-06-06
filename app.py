@@ -533,9 +533,63 @@ def save_report_to_db(user_id, report_text):
         if connection:
             connection.close()
 
-# Flask 파일 상단에 추가 (import 섹션 근처)
-import requests
+import urllib.request
 import tempfile
+import ssl
+
+def setup_korean_font():
+    """한글 폰트 자동 다운로드 및 등록 (기본 라이브러리만 사용)"""
+    try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        
+        print("[INFO] 한글 폰트 다운로드 중...")
+        
+        # 구글 폰트 URL (나눔고딕)
+        font_url = "https://fonts.gstatic.com/s/nanumgothic/v17/PN_3Rfi-oW3hYwmKDpxS7F_D_9ta.ttf"
+        
+        # SSL 설정 (배포 환경 호환성)
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        
+        # 폰트 다운로드
+        request = urllib.request.Request(
+            font_url,
+            headers={'User-Agent': 'Mozilla/5.0 (compatible; PDF Generator)'}
+        )
+        
+        with urllib.request.urlopen(request, timeout=30, context=ssl_context) as response:
+            font_data = response.read()
+        
+        # 다운로드 검증
+        if len(font_data) > 10000:  # 최소 10KB 이상이어야 정상 폰트
+            # 임시 파일로 저장
+            temp_font = tempfile.NamedTemporaryFile(delete=False, suffix='.ttf')
+            temp_font.write(font_data)
+            temp_font.close()
+            
+            # ReportLab에 폰트 등록
+            pdfmetrics.registerFont(TTFont('NanumGothic', temp_font.name))
+            print(f"[SUCCESS] 한글 폰트 등록 완료 ({len(font_data)} bytes)")
+            return 'NanumGothic'
+        else:
+            raise Exception(f"폰트 파일 크기 이상: {len(font_data)} bytes")
+            
+    except Exception as e:
+        print(f"[WARNING] 한글 폰트 설정 실패: {e}")
+        print("[INFO] 기본 폰트로 대체합니다")
+        return 'Helvetica'  # 기본 폰트로 fallback
+
+# 추가 개선: 폰트 캐싱
+font_cache = None
+
+def get_korean_font():
+    """한글 폰트 캐싱 (한 번만 다운로드)"""
+    global font_cache
+    if font_cache is None:
+        font_cache = setup_korean_font()
+    return font_cache
 
 # 기존 create_simple_pdf 함수 위에 이 함수 추가
 def setup_korean_font():
@@ -576,7 +630,7 @@ def create_simple_pdf(report_data):
         from reportlab.pdfbase.ttfonts import TTFont
         from reportlab.lib.fonts import addMapping
         
-        korean_font = setup_korean_font()  # 위에서 정의한 함수 호출
+        korean_font = get_korean_font()  # 캐싱된 폰트 사용
         
         # PDF 생성 e, suffix='.pdf')
         

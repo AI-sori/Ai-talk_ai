@@ -86,7 +86,7 @@ function setupEventListeners() {
     if (el.startRecordBtn) el.startRecordBtn.addEventListener('click', startRecording);
     if (el.stopRecordBtn) el.stopRecordBtn.addEventListener('click', stopRecording);
     if (el.generateReportBtn) el.generateReportBtn.addEventListener('click', generateReport);
-    if (el.downloadReportBtn) el.downloadReportBtn.addEventListener('click', downloadReport);
+    if (el.downloadReportBtn) el.downloadReportBtn.addEventListener('click', downloadPDFReport);
     if (el.nextStoryBtn) el.nextStoryBtn.addEventListener('click', nextStory);
     
     console.log('[INFO] 이벤트 리스너 설정 완료');

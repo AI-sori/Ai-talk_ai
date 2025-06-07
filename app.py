@@ -550,7 +550,7 @@ def download_pdf_report():
         import urllib.request
         import ssl
         
-        # 🔥 나눔고딕 웹폰트 직접 다운로드 (한 번만)
+        # 🔥 나눔고딕 웹폰트 직접 다운로드 (변수명 수정)
         try:
             print("[INFO] 나눔고딕 폰트 다운로드 중...")
             
@@ -562,12 +562,13 @@ def download_pdf_report():
             # 나눔고딕 폰트 URL (Google Fonts)
             font_url = "https://fonts.gstatic.com/ea/nanumgothic/v5/NanumGothic-Regular.ttf"
             
-            request = urllib.request.Request(
+            # ✅ 변수명 변경: request → font_request
+            font_request = urllib.request.Request(
                 font_url,
                 headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
             )
             
-            with urllib.request.urlopen(request, timeout=15, context=ssl_context) as response:
+            with urllib.request.urlopen(font_request, timeout=15, context=ssl_context) as response:
                 font_data = response.read()
             
             # 임시 폰트 파일 생성
@@ -755,7 +756,6 @@ def download_pdf_report():
         import traceback
         traceback.print_exc()
         return jsonify({"status": "error", "message": f"PDF 생성 오류: {str(e)}"})
-
 
 # health_check 함수도 수정 (psutil 의존성 제거)
 @app.route('/health', methods=['GET'])

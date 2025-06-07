@@ -852,86 +852,142 @@ def create_simple_pdf(report_data):
 
 @app.route('/download_pdf_report', methods=['POST'])
 def download_pdf_report():
-    """PDF 리포트 다운로드 + DB 저장 - 메모리 최적화"""
     try:
-        data = request.json
-        child_name = data.get('child_name', 'Unknown')
+        print("[DEBUG] PDF 다운로드 요청 시작")
+        
+        data = request.get_json()
+        print(f"[DEBUG] 받은 데이터: {data}")
+        
+        child_name = data.get('child_name', '테스트')
         user_id = data.get('user_id', 1)
         audio_result = data.get('audio_result', {})
         
-        global tracking_results
+        print(f"[DEBUG] 아동 이름: {child_name}")
+        print(f"[DEBUG] 사용자 ID: {user_id}")
+        print(f"[DEBUG] 음성 결과: {audio_result}")
         
-        if tracking_results:
-            total_tracking_time = len(tracking_results) * 0.5
-            center_count = sum(1 for r in tracking_results if r['gaze_direction'] == 'center')
-            concentration_score = (center_count / len(tracking_results) * 100)
-        else:
-            total_tracking_time = 0
-            concentration_score = 0
+        # 🔥 임시로 간단한 PDF만 생성해보기
+        print("[DEBUG] 간단한 PDF 생성 시도...")
         
-        # 리포트 데이터 구성
-        report_data = {
-            "report": {
-                "child_name": child_name,
-                "diagnosis_date": datetime.datetime.now().strftime("%Y-%m-%d"),
-                "reading_time": f"{total_tracking_time:.1f}초",
-                "results": {
-                    "reading_speed": "보통",
-                    "concentration": f"{concentration_score:.1f}%",
-                    "comprehension": audio_result.get('comprehension', '0.0%')
-                },
-                "speech_analysis": {
-                    "transcription": audio_result.get('transcription', 'N/A'),
-                    "fluency": audio_result.get('fluency', '0.0%'),
-                    "pronunciation_clarity": audio_result.get('pronunciation_clarity', '0.0%')
-                }
-            }
-        }
+        # ReportLab 임포트 테스트
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+            from reportlab.lib.styles import getSampleStyleSheet
+            print("[DEBUG] ReportLab 임포트 성공")
+        except ImportError as e:
+            print(f"[ERROR] ReportLab 임포트 실패: {e}")
+            return jsonify({"status": "error", "message": f"ReportLab 설치 필요: {e}"})
         
-        # 1. PDF 생성
-        pdf_path = create_simple_pdf(report_data)
-        
-        # 2. DB에 텍스트 데이터 저장 
-        report_text = create_report_text(report_data)
-        diagnosis_id = save_report_to_db(user_id, report_text)
-        
-        if pdf_path:
-            with open(pdf_path, 'rb') as pdf_file:
-                pdf_data = pdf_file.read()
-                pdf_base64 = base64.b64encode(pdf_data).decode('utf-8')
+        # 임시 파일 생성 테스트
+        try:
+            import tempfile
+            import os
+            
+            temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+            print(f"[DEBUG] 임시 파일 생성: {temp_pdf.name}")
+            
+            # 🔥 매우 간단한 PDF 생성 (한글 폰트 없이)
+            doc = SimpleDocTemplate(temp_pdf.name, pagesize=A4)
+            styles = getSampleStyleSheet()
+            
+            content = []
+            content.append(Paragraph(f"Reading Report for {child_name}", styles['Title']))
+            content.append(Spacer(1, 20))
+            content.append(Paragraph("Test PDF Generation", styles['Normal']))
+            
+            doc.build(content)
+            temp_pdf.close()
+            
+            print("[DEBUG] 간단한 PDF 생성 완료")
+            
+            # PDF 파일 읽기
+            with open(temp_pdf.name, 'rb') as f:
+                pdf_data = f.read()
+            
+            print(f"[DEBUG] PDF 파일 크기: {len(pdf_data)} 바이트")
+            
+            # Base64 인코딩
+            import base64
+            pdf_base64 = base64.b64encode(pdf_data).decode('utf-8')
+            
+            print(f"[DEBUG] Base64 인코딩 완료: {len(pdf_base64)} 문자")
             
             # 임시 파일 삭제
-            os.unlink(pdf_path)
-            
-            filename = f"진단리포트_{child_name}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            
-            print(f"[SUCCESS] PDF 생성 및 DB 저장 완료. DB ID: {diagnosis_id}")
-            
-            # 메모리 정리
-            cleanup_memory()
+            os.unlink(temp_pdf.name)
             
             return jsonify({
                 "status": "success",
                 "pdf_data": pdf_base64,
-                "filename": filename,
-                "diagnosis_id": diagnosis_id,
-                "message": "PDF 생성 및 DB 저장 완료"
+                "filename": f"{child_name}_report_test.pdf"
             })
-        else:
-            return jsonify({"status": "error", "message": "PDF 생성 실패"})
+            
+        except Exception as pdf_error:
+            print(f"[ERROR] PDF 생성 상세 오류: {pdf_error}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"status": "error", "message": f"PDF 생성 오류: {str(pdf_error)}"})
             
     except Exception as e:
-        print(f"[ERROR] PDF 리포트 생성 오류: {e}")
-        return jsonify({"status": "error", "message": f"PDF 생성 실패: {str(e)}"})
-    finally:
-        # 메모리 정리
-        gc.collect()
+        print(f"[ERROR] 전체 함수 오류: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": f"서버 오류: {str(e)}"})
+
+# 🔥 또는 더 간단한 테스트 버전
+@app.route('/test_pdf', methods=['GET'])
+def test_pdf():
+    """PDF 생성 기능만 간단히 테스트"""
+    try:
+        print("[TEST] PDF 생성 테스트 시작")
+        
+        # ReportLab 설치 확인
+        import reportlab
+        print(f"[TEST] ReportLab 버전: {reportlab.Version}")
+        
+        from reportlab.lib.pagesizes import A4
+        from reportlab.platypus import SimpleDocTemplate, Paragraph
+        from reportlab.lib.styles import getSampleStyleSheet
+        
+        import tempfile
+        import base64
+        import os
+        
+        # 임시 파일 생성
+        temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+        
+        # 간단한 PDF 생성
+        doc = SimpleDocTemplate(temp_pdf.name, pagesize=A4)
+        styles = getSampleStyleSheet()
+        
+        content = [Paragraph("Test PDF - Korean Font Test", styles['Title'])]
+        doc.build(content)
+        temp_pdf.close()
+        
+        # 파일 읽기
+        with open(temp_pdf.name, 'rb') as f:
+            pdf_data = base64.b64encode(f.read()).decode('utf-8')
+        
+        os.unlink(temp_pdf.name)
+        
+        print("[TEST] PDF 생성 테스트 성공")
+        return jsonify({
+            "status": "success", 
+            "message": "PDF 생성 테스트 성공",
+            "pdf_size": len(pdf_data)
+        })
+        
+    except Exception as e:
+        print(f"[TEST ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)})
 
 # 메모리 사용량 체크 엔드포인트 (배포 후 모니터링용)
 @app.route('/health', methods=['GET'])
 def health_check():
     """헬스체크 + 메모리 사용량"""
-    import psutil
+    #import psutil
     try:
         process = psutil.Process()
         memory_info = process.memory_info()

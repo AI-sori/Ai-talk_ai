@@ -8,16 +8,6 @@ import base64
 import numpy as np
 import pymysql
 import gc  # 가비지 컬렉션
-# pdf 관련
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER
-from reportlab.lib.units import mm
-from reportlab.lib.enums import TA_LEFT
-import tempfile
 
 # 현재 디렉토리를 Python 경로에 추가
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -535,53 +525,16 @@ import urllib.request
 import tempfile
 import ssl
 
-font_cache = None
-
-def get_korean_font():
-    """간단한 폰트 설정 - 복잡한 다운로드 없이"""
-    try:
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-        
-        # 시스템에 있을 가능성이 높은 폰트들 시도
-        font_candidates = [
-            # Linux/Ubuntu 한글 폰트
-            ('/usr/share/fonts/truetype/nanum/NanumGothic.ttf', 'NanumGothic'),
-            ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 'DejaVuSans'),
-            # 기본 시스템 폰트
-            ('/usr/share/fonts/TTF/arial.ttf', 'Arial'),
-            ('/System/Library/Fonts/Arial.ttf', 'Arial'),
-        ]
-        
-        for font_path, font_name in font_candidates:
-            if os.path.exists(font_path):
-                try:
-                    pdfmetrics.registerFont(TTFont(font_name, font_path))
-                    print(f"[SUCCESS] 폰트 등록 성공: {font_name}")
-                    return font_name
-                except Exception as e:
-                    print(f"[WARNING] {font_name} 등록 실패: {e}")
-                    continue
-        
-        # 모든 폰트 실패시 기본 폰트
-        print("[INFO] 기본 폰트 사용: Helvetica")
-        return 'Helvetica'
-        
-    except Exception as e:
-        print(f"[ERROR] 폰트 설정 실패: {e}")
-        return 'Helvetica'
 
 @app.route('/download_pdf_report', methods=['POST'])
 def download_pdf_report():
     try:
-        print("[DEBUG] PDF 다운로드 요청 시작")
+        print("[DEBUG] 간단한 한글 PDF 생성 시작")
         
         data = request.get_json()
         child_name = data.get('child_name', '테스트 아동')
         user_id = data.get('user_id', 1)
         audio_result = data.get('audio_result', {})
-        
-        print(f"[DEBUG] 아동: {child_name}, 사용자: {user_id}")
         
         from reportlab.lib.pagesizes import A4
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -589,17 +542,52 @@ def download_pdf_report():
         from reportlab.lib.units import mm
         from reportlab.lib import colors
         from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
         import tempfile
         import os
         from datetime import datetime
+        import urllib.request
+        import ssl
         
-        # 폰트 설정
-        font_name = get_korean_font()
+        # 🔥 나눔고딕 웹폰트 직접 다운로드 (한 번만)
+        try:
+            print("[INFO] 나눔고딕 폰트 다운로드 중...")
+            
+            # SSL 설정
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            
+            # 나눔고딕 폰트 URL (Google Fonts)
+            font_url = "https://fonts.gstatic.com/ea/nanumgothic/v5/NanumGothic-Regular.ttf"
+            
+            request = urllib.request.Request(
+                font_url,
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+            )
+            
+            with urllib.request.urlopen(request, timeout=15, context=ssl_context) as response:
+                font_data = response.read()
+            
+            # 임시 폰트 파일 생성
+            temp_font = tempfile.NamedTemporaryFile(delete=False, suffix='.ttf')
+            temp_font.write(font_data)
+            temp_font.close()
+            
+            # ReportLab에 폰트 등록
+            pdfmetrics.registerFont(TTFont('NanumGothic', temp_font.name))
+            font_name = 'NanumGothic'
+            print("[SUCCESS] 나눔고딕 폰트 등록 완료!")
+            
+        except Exception as font_error:
+            print(f"[WARNING] 폰트 다운로드 실패: {font_error}")
+            font_name = 'Helvetica'  # 기본 폰트 사용
         
-        # 임시 파일 생성
+        # 임시 PDF 파일 생성
         temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
         
-        # PDF 문서 설정
+        # PDF 문서 생성
         doc = SimpleDocTemplate(
             temp_pdf.name,
             pagesize=A4,
@@ -609,22 +597,22 @@ def download_pdf_report():
             rightMargin=20*mm
         )
         
-        # 스타일 설정
+        # 한글 스타일 정의
         title_style = ParagraphStyle(
-            'ReportTitle',
+            'Title',
             fontName=font_name,
-            fontSize=18,
-            spaceAfter=30,
+            fontSize=20,
+            spaceAfter=20,
             alignment=TA_CENTER,
             textColor=colors.HexColor('#2c3e50'),
-            leading=22
+            leading=24
         )
         
         header_style = ParagraphStyle(
-            'SectionHeader',
+            'Header',
             fontName=font_name,
             fontSize=14,
-            spaceAfter=12,
+            spaceAfter=10,
             textColor=colors.HexColor('#34495e'),
             leading=18
         )
@@ -632,164 +620,142 @@ def download_pdf_report():
         normal_style = ParagraphStyle(
             'Normal',
             fontName=font_name,
-            fontSize=10,
-            leading=14,
-            spaceAfter=6
+            fontSize=11,
+            leading=16,
+            spaceAfter=8
         )
         
+        # PDF 내용 구성
         content = []
         
-        # 🇰🇷 한글 제목으로 변경
-        content.append(Paragraph(f"읽기 능력 진단 리포트", title_style))
-        content.append(Paragraph(f"아동명: {child_name}", title_style))
+        # 🇰🇷 완전 한글 제목
+        content.append(Paragraph("📚 읽기 능력 진단 리포트", title_style))
+        content.append(Spacer(1, 10))
+        content.append(Paragraph(f"👦 아동명: {child_name}", header_style))
         content.append(Spacer(1, 20))
         
-        # 기본 정보
-        content.append(Paragraph("기본 정보", header_style))
+        # 기본 정보 테이블
+        content.append(Paragraph("📋 기본 정보", header_style))
         
-        basic_info_data = [
-            ['아동 이름:', child_name],
-            ['진단 날짜:', datetime.now().strftime('%Y년 %m월 %d일')],
-            ['사용자 ID:', str(user_id)],
+        basic_data = [
+            ['아동 이름', child_name],
+            ['진단 날짜', datetime.now().strftime('%Y년 %m월 %d일')],
+            ['사용자 ID', str(user_id)],
+            ['리포트 생성 시간', datetime.now().strftime('%H시 %M분')]
         ]
         
-        basic_table = Table(basic_info_data, colWidths=[40*mm, 80*mm])
+        basic_table = Table(basic_data, colWidths=[50*mm, 100*mm])
         basic_table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, -1), font_name),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
             ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#ecf0f1')),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
         ]))
         
         content.append(basic_table)
         content.append(Spacer(1, 20))
         
         # 음성 분석 결과
-        content.append(Paragraph("음성 분석 결과", header_style))
+        content.append(Paragraph("🎤 음성 분석 결과", header_style))
         
-        transcription = audio_result.get('transcription', '음성 녹음 없음')
-        fluency = audio_result.get('fluency', '0%')
-        clarity = audio_result.get('pronunciation_clarity', '0%')
-        speaking_rate = audio_result.get('speaking_rate', '0 단어/분')
+        transcription = audio_result.get('transcription', '음성 녹음이 없습니다')
+        fluency = audio_result.get('fluency', '측정되지 않음')
+        clarity = audio_result.get('pronunciation_clarity', '측정되지 않음')
         
         speech_data = [
-            ['인식된 텍스트:', transcription[:50] + '...' if len(transcription) > 50 else transcription],
-            ['말하기 유창성:', fluency],
-            ['발음 명확도:', clarity],
-            ['말하기 속도:', speaking_rate],
+            ['인식된 내용', transcription[:60] + '...' if len(transcription) > 60 else transcription],
+            ['말하기 유창성', fluency],
+            ['발음 명확도', clarity],
+            ['전체 분석 상태', '완료']
         ]
         
-        speech_table = Table(speech_data, colWidths=[40*mm, 120*mm])
+        speech_table = Table(speech_data, colWidths=[50*mm, 100*mm])
         speech_table.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, -1), font_name),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
-            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#ecf0f1')),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e8f5e8')),
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
         ]))
         
         content.append(speech_table)
         content.append(Spacer(1, 20))
         
-        # 시선 추적 결과
-        content.append(Paragraph("시선 추적 결과", header_style))
-        
-        eye_tracking_data = [
-            ['총 읽기 시간:', '3분 45초'],
-            ['집중 시간:', '2분 12초'],
-            ['집중도 수준:', '좋음 (75%)'],
-            ['읽기 패턴:', '왼쪽에서 오른쪽 진행'],
-        ]
-        
-        eye_table = Table(eye_tracking_data, colWidths=[40*mm, 80*mm])
-        eye_table.setStyle(TableStyle([
-            ('FONTNAME', (0, 0), (-1, -1), font_name),
-            ('FONTSIZE', (0, 0), (-1, -1), 10),
-            ('GRID', (0, 0), (-1, -1), 1, colors.grey),
-            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#ecf0f1')),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ]))
-        
-        content.append(eye_table)
-        content.append(Spacer(1, 20))
-        
         # 종합 평가
-        content.append(Paragraph("종합 평가", header_style))
-        
-        try:
-            fluency_score = float(fluency.replace('%', ''))
-            if fluency_score >= 80:
-                assessment = "우수한 읽기 능력을 보여줍니다. 유창성과 이해력이 지속적으로 발전하고 있습니다."
-            elif fluency_score >= 60:
-                assessment = "좋은 읽기 기초 능력을 가지고 있습니다. 다양한 텍스트로 계속 연습하는 것을 추천합니다."
-            else:
-                assessment = "읽기 능력이 발전하고 있습니다. 추가적인 지원과 연습이 필요합니다."
-        except:
-            assessment = "정확한 평가를 위해서는 추가적인 데이터가 필요합니다."
-        
-        content.append(Paragraph(assessment, normal_style))
+        content.append(Paragraph("📊 종합 평가", header_style))
+        content.append(Paragraph("이번 진단을 통해 아동의 읽기 능력과 음성 분석이 완료되었습니다.", normal_style))
+        content.append(Paragraph("지속적인 읽기 연습과 발음 교정을 통해 더욱 향상된 결과를 기대할 수 있습니다.", normal_style))
         content.append(Spacer(1, 15))
         
-        # 추천 사항
-        content.append(Paragraph("맞춤 추천 사항", header_style))
+        # 추천사항
+        content.append(Paragraph("💡 맞춤형 추천사항", header_style))
         
         recommendations = [
-            "• 나이에 맞는 도서로 매일 읽기 연습을 계속하세요",
-            "• 소리 내어 읽기를 통해 발음 명확도를 향상시키세요", 
-            "• 읽은 내용에 대해 질문하고 답하는 연습을 하세요",
-            "• 재미있는 읽기 게임으로 흥미를 유지하세요",
-            "• 3개월 후 재검사를 받아보세요"
+            "1. 매일 20분씩 소리내어 읽기 연습하기",
+            "2. 다양한 장르의 책으로 독서 범위 넓히기",
+            "3. 읽은 내용을 요약하여 말해보기",
+            "4. 발음이 어려운 단어는 반복 연습하기",
+            "5. 3개월 후 재진단 받기"
         ]
         
         for rec in recommendations:
             content.append(Paragraph(rec, normal_style))
-            content.append(Spacer(1, 5))
+            content.append(Spacer(1, 4))
         
         # 푸터
         content.append(Spacer(1, 30))
-        footer_text = f"리포트 생성일: {datetime.now().strftime('%Y년 %m월 %d일 %H시 %M분')} | 읽기 능력 진단 시스템 v1.0"
+        footer = f"📅 생성일시: {datetime.now().strftime('%Y년 %m월 %d일 %H시 %M분')} | AI 읽기 진단 시스템"
         footer_style = ParagraphStyle(
             'Footer',
             fontName=font_name,
-            fontSize=8,
+            fontSize=9,
             alignment=TA_CENTER,
-            textColor=colors.grey,
-            leading=10
+            textColor=colors.grey
         )
-        content.append(Paragraph(footer_text, footer_style))
+        content.append(Paragraph(footer, footer_style))
         
-        # PDF 빌드
+        # PDF 생성
         doc.build(content)
         temp_pdf.close()
         
-        print("[DEBUG] PDF 생성 완료")
+        print("[SUCCESS] 한글 PDF 생성 완료!")
         
-        # PDF 파일 읽기
+        # PDF 파일 읽어서 Base64 인코딩
         with open(temp_pdf.name, 'rb') as f:
             pdf_data = f.read()
         
-        # Base64 인코딩
         import base64
         pdf_base64 = base64.b64encode(pdf_data).decode('utf-8')
         
-        # 임시 파일 삭제
+        # 임시 파일들 정리
         os.unlink(temp_pdf.name)
+        if 'temp_font' in locals():
+            try:
+                os.unlink(temp_font.name)
+            except:
+                pass
         
         return jsonify({
             "status": "success",
             "pdf_data": pdf_base64,
-            "filename": f"{child_name}_읽기능력진단리포트.pdf"
+            "filename": f"{child_name}_읽기진단리포트.pdf"
         })
         
     except Exception as e:
-        print(f"[ERROR] PDF 생성 오류: {e}")
+        print(f"[ERROR] PDF 생성 실패: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({"status": "error", "message": str(e)})
+        return jsonify({"status": "error", "message": f"PDF 생성 오류: {str(e)}"})
+
 
 # health_check 함수도 수정 (psutil 의존성 제거)
 @app.route('/health', methods=['GET'])

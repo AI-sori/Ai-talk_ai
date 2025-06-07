@@ -529,7 +529,7 @@ import ssl
 @app.route('/download_pdf_report', methods=['POST'])
 def download_pdf_report():
     try:
-        print("[DEBUG] 간단한 한글 PDF 생성 시작")
+        print("[DEBUG] PDF 생성 + DB 저장 시작")
         
         data = request.get_json()
         child_name = data.get('child_name', '테스트 아동')
@@ -550,19 +550,16 @@ def download_pdf_report():
         import urllib.request
         import ssl
         
-        # 🔥 나눔고딕 웹폰트 직접 다운로드 (변수명 수정)
+        # 나눔고딕 웹폰트 다운로드
         try:
             print("[INFO] 나눔고딕 폰트 다운로드 중...")
             
-            # SSL 설정
             ssl_context = ssl.create_default_context()
             ssl_context.check_hostname = False
             ssl_context.verify_mode = ssl.CERT_NONE
             
-            # 나눔고딕 폰트 URL (Google Fonts)
             font_url = "https://fonts.gstatic.com/ea/nanumgothic/v5/NanumGothic-Regular.ttf"
             
-            # ✅ 변수명 변경: request → font_request
             font_request = urllib.request.Request(
                 font_url,
                 headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
@@ -571,19 +568,17 @@ def download_pdf_report():
             with urllib.request.urlopen(font_request, timeout=15, context=ssl_context) as response:
                 font_data = response.read()
             
-            # 임시 폰트 파일 생성
             temp_font = tempfile.NamedTemporaryFile(delete=False, suffix='.ttf')
             temp_font.write(font_data)
             temp_font.close()
             
-            # ReportLab에 폰트 등록
             pdfmetrics.registerFont(TTFont('NanumGothic', temp_font.name))
             font_name = 'NanumGothic'
             print("[SUCCESS] 나눔고딕 폰트 등록 완료!")
             
         except Exception as font_error:
             print(f"[WARNING] 폰트 다운로드 실패: {font_error}")
-            font_name = 'Helvetica'  # 기본 폰트 사용
+            font_name = 'Helvetica'
         
         # 임시 PDF 파일 생성
         temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
@@ -598,7 +593,7 @@ def download_pdf_report():
             rightMargin=20*mm
         )
         
-        # 한글 스타일 정의
+        # 스타일 정의
         title_style = ParagraphStyle(
             'Title',
             fontName=font_name,
@@ -629,13 +624,13 @@ def download_pdf_report():
         # PDF 내용 구성
         content = []
         
-        # 🇰🇷 완전 한글 제목
+        # 제목
         content.append(Paragraph("📚 읽기 능력 진단 리포트", title_style))
         content.append(Spacer(1, 10))
         content.append(Paragraph(f"👦 아동명: {child_name}", header_style))
         content.append(Spacer(1, 20))
         
-        # 기본 정보 테이블
+        # 기본 정보
         content.append(Paragraph("📋 기본 정보", header_style))
         
         basic_data = [
@@ -730,6 +725,41 @@ def download_pdf_report():
         
         print("[SUCCESS] 한글 PDF 생성 완료!")
         
+        # DB 저장!
+        try:
+            print("[INFO] DB에 리포트 저장 중...")
+            
+            # 리포트 데이터 구성 (백엔드 분석용)
+            report_data = {
+                "id": int(datetime.now().timestamp()),
+                "user_id": user_id,
+                "diagnosis_type": "reading_analysis_pdf",
+                "created_at": datetime.now().isoformat(),
+                "report": {
+                    "child_name": child_name,
+                    "diagnosis_date": datetime.now().strftime("%Y-%m-%d"),
+                    "speech_analysis": audio_result,
+                    "pdf_generated": True,
+                    "total_tracking_results": len(tracking_results),
+                    "calibration_points": len(calibration_data)
+                }
+            }
+            
+            # 백엔드 텍스트 분석용 데이터 생성
+            report_text = create_report_text(report_data)
+            
+            # DB 저장
+            report_id = save_report_to_db(user_id, report_text)
+            
+            if report_id:
+                print(f"[SUCCESS] 백엔드용 DB 저장 완료! Report ID: {report_id}")
+            else:
+                print("[WARNING] DB 저장 실패")
+                
+        except Exception as db_error:
+            print(f"[ERROR] DB 저장 오류: {db_error}")
+            report_id = None
+        
         # PDF 파일 읽어서 Base64 인코딩
         with open(temp_pdf.name, 'rb') as f:
             pdf_data = f.read()
@@ -745,10 +775,14 @@ def download_pdf_report():
             except:
                 pass
         
+        print(f"[INFO] Report ID {report_id}로 DB 저장 완료!")
+        
         return jsonify({
             "status": "success",
             "pdf_data": pdf_base64,
-            "filename": f"{child_name}_읽기진단리포트.pdf"
+            "filename": f"{child_name}_읽기진단리포트.pdf",
+            "report_id": report_id,  # 백엔드에서 사용할 ID
+            "db_saved": report_id is not None  # DB 저장 성공 여부
         })
         
     except Exception as e:

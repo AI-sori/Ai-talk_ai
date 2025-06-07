@@ -583,24 +583,33 @@ ${r.feedback.recommended_activities.slice(0, 4).map(activity => `• ${activity}
 // 리포트 다운로드
 // main.js에서 downloadPDFReport 함수 수정
 async function downloadPDFReport() {
-    const childName = document.getElementById('childName').value.trim();
-    const userId = parseInt(document.getElementById('userId').value) || 1;
+    const childName = el.childName.value.trim();
+    const userId = parseInt(el.userId.value) || 1;
     
     if (!childName) {
-        alert('아동 이름을 입력해주세요.');
+        updateStatus('아동 이름을 입력해주세요.', 'error');
         return;
     }
     
-    // lastAudioResult 체크 부분 수정
-    const audioResult = window.lastAudioResult || {
+    const audioData = audioResult || {
         transcription: '음성 분석 결과 없음',
         fluency: '0.0%',
         pronunciation_clarity: '0.0%',
-        comprehension: '0.0%'
+        comprehension: '0.0%',
+        speaking_rate: '0.0 단어/분',
+        duration: '0.0초',
+        word_count: 0
     };
     
     try {
-        updateStatus('📄 PDF 생성 중...', 'processing');
+        updateStatus('📄 PDF 생성 중...', 'info');
+        el.downloadReportBtn.disabled = true;
+        
+        console.log('[DEBUG] 요청 데이터:', {
+            child_name: childName,
+            user_id: userId,
+            audio_result: audioData
+        });
         
         const response = await fetch('/download_pdf_report', {
             method: 'POST',
@@ -610,13 +619,31 @@ async function downloadPDFReport() {
             body: JSON.stringify({
                 child_name: childName,
                 user_id: userId,
-                audio_result: audioResult  // lastAudioResult 대신 audioResult 사용
+                audio_result: audioData
             })
         });
         
-        const result = await response.json();
+        console.log('[DEBUG] 응답 상태:', response.status);
+        console.log('[DEBUG] 응답 헤더:', response.headers);
+        
+        // 🔥 응답을 텍스트로 먼저 받아서 확인
+        const responseText = await response.text();
+        console.log('[DEBUG] 응답 내용:', responseText);
+        
+        // JSON 파싱 시도
+        let result;
+        try {
+            result = JSON.parse(responseText);
+            console.log('[DEBUG] 파싱된 JSON:', result);
+        } catch (parseError) {
+            console.error('[ERROR] JSON 파싱 실패:', parseError);
+            console.error('[ERROR] 응답 텍스트:', responseText);
+            throw new Error('서버 응답이 JSON 형식이 아닙니다');
+        }
         
         if (result.status === 'success') {
+            console.log('[DEBUG] PDF 데이터 길이:', result.pdf_data ? result.pdf_data.length : 'undefined');
+            
             // Base64를 Blob으로 변환
             const pdfData = atob(result.pdf_data);
             const pdfArray = new Uint8Array(pdfData.length);
@@ -629,19 +656,22 @@ async function downloadPDFReport() {
             const downloadUrl = URL.createObjectURL(pdfBlob);
             const downloadLink = document.createElement('a');
             downloadLink.href = downloadUrl;
-            downloadLink.download = result.filename;
+            downloadLink.download = result.filename || 'report.pdf';
             downloadLink.click();
             
             URL.revokeObjectURL(downloadUrl);
             updateStatus('✅ PDF 다운로드 완료!', 'success');
             
         } else {
-            throw new Error(result.message);
+            console.error('[ERROR] 서버 오류:', result.message);
+            throw new Error(result.message || 'PDF 생성 실패');
         }
         
     } catch (error) {
-        console.error('PDF 다운로드 오류:', error);
+        console.error('[ERROR] PDF 다운로드 상세 오류:', error);
         updateStatus(`❌ PDF 생성 실패: ${error.message}`, 'error');
+    } finally {
+        el.downloadReportBtn.disabled = false;
     }
 }
 

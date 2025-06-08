@@ -251,7 +251,7 @@ def track_gaze():
             if result:
                 # 결과 저장 - 메모리 최적화
                 tracking_results.append({
-                    'timestamp': datetime.datetime.now().isoformat(),
+                    'timestamp': datetime.now().isoformat(),
                     'gaze_direction': result['direction'],
                     'confidence': result['confidence'],
                     'position': result['position']
@@ -396,13 +396,13 @@ def generate_report():
 
         # API 명세 구조
         report = {
-            "id": int(datetime.datetime.now().timestamp()),
+            "id": int(datetime.now().timestamp()),
             "user_id": user_id,
             "diagnosis_type": "reading_analysis",
-            "created_at": datetime.datetime.now().isoformat(),
+            "created_at": datetime.now().isoformat(),
             "report": {
                 "child_name": child_name,
-                "diagnosis_date": datetime.datetime.now().strftime("%Y-%m-%d"),
+                "diagnosis_date": datetime.now().strftime("%Y-%m-%d"),
                 "reading_time": f"{total_tracking_time:.1f}초",
                 "results": {
                     "reading_speed": f"{reading_speed:.1f} 회/분",
@@ -424,7 +424,7 @@ def generate_report():
                 "feedback": {
                     "summary": f"총 {len(tracking_results)}회 측정, 집중도 {concentration_score:.1f}%",
                     "recommended_activities": recommended_activities,
-                    "next_diagnosis_date": (datetime.datetime.now() + datetime.timedelta(days=30)).strftime("%Y-%m-%d")
+                    "next_diagnosis_date": (datetime.now() + datetime.timedelta(days=30)).strftime("%Y-%m-%d")
                 }
             }
         }

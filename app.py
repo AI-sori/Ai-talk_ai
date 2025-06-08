@@ -423,7 +423,7 @@ def generate_report():
                 "feedback": {
                     "summary": f"총 {len(tracking_results)}회 측정, 집중도 {concentration_score:.1f}%",
                     "recommended_activities": recommended_activities,
-                    "next_diagnosis_date": (datetime.now() + datetime.timedelta(days=30)).strftime("%Y-%m-%d")
+                    "next_diagnosis_date": (datetime.now() + timedelta(days=30)) .strftime("%Y-%m-%d")
                 }
             }
         }
@@ -534,7 +534,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 import tempfile
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import urllib.request
 import ssl
 

@@ -55,7 +55,7 @@ DB_CONFIG = {
     'port': 30213,
     'user': 'root',
     'password': 'ai-talk',
-    'database': 'ai-sori',
+    'database': 'ai-talk',
     'charset': 'utf8mb4'
 }
 
@@ -493,28 +493,27 @@ def create_report_text(report_data):
         print(f"[ERROR] 리포트 텍스트 생성 오류: {e}")
         return f"리포트 생성 오류: {str(e)}"
 
-def save_report_to_db(user_id, report_text):
-    """DB에 리포트 저장 - 메모리 최적화"""
+def save_report_to_db(member_id, child_name, pdf_data, filename):
+    """DB에 PDF 리포트 저장 - 메모리 최적화"""
     connection = None
     try:
         connection = get_db_connection()
         if not connection:
             return None
-            
+                     
         with connection.cursor() as cursor:
             sql = """
-            INSERT INTO Report (user_id, diagnosis_id, report_text, created_at) 
-            VALUES (%s, %s, %s, NOW())
+            INSERT INTO pdf_reports (member_id, child_name, pdf_data, filename, created_at) 
+            VALUES (%s, %s, %s, %s, NOW())
             """
-            
-            diagnosis_id = user_id
-            cursor.execute(sql, (user_id, diagnosis_id, report_text))
+                     
+            cursor.execute(sql, (member_id, child_name, pdf_data, filename))
             connection.commit()
-            
+                     
             return cursor.lastrowid
-            
+                 
     except Exception as e:
-        print(f"[ERROR] DB 저장 오류: {e}")
+        print(f"[ERROR] PDF 저장 오류: {e}")
         return None
     finally:
         if connection:
@@ -776,10 +775,13 @@ def download_pdf_report():
             }
             
             # 백엔드 텍스트 분석용 데이터 생성
-            report_text = create_report_text(report_data)
-            
+            #report_text = create_report_text(report_data)
             # DB 저장
-            report_id = save_report_to_db(user_id, report_text)
+            #report_id = save_report_to_db(user_id, report_text)
+
+            filename = f"{child_name}_읽기진단리포트.pdf" 
+            report_id = save_report_to_db(user_id, child_name, pdf_data, filename)
+            
             
             if report_id:
                 print(f"[SUCCESS] 백엔드용 DB 저장 완료! Report ID: {report_id}")

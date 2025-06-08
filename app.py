@@ -1,7 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import cv2
 import json
-import datetime
 import sys
 import os
 import base64

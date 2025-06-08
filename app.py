@@ -525,6 +525,20 @@ import urllib.request
 import tempfile
 import ssl
 
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+import tempfile
+import os
+from datetime import datetime
+import urllib.request
+import ssl
+
 
 @app.route('/download_pdf_report', methods=['POST'])
 def download_pdf_report():
@@ -536,19 +550,7 @@ def download_pdf_report():
         user_id = data.get('user_id', 1)
         audio_result = data.get('audio_result', {})
         
-        from reportlab.lib.pagesizes import A4
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.units import mm
-        from reportlab.lib import colors
-        from reportlab.lib.enums import TA_CENTER, TA_LEFT
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-        import tempfile
-        import os
-        from datetime import datetime
-        import urllib.request
-        import ssl
+        eye_tracking_result = data.get('eye_tracking_result', {})
         
         # 나눔고딕 웹폰트 다운로드
         try:
@@ -655,6 +657,33 @@ def download_pdf_report():
         
         content.append(basic_table)
         content.append(Spacer(1, 20))
+
+        # ===== 시선추적 분석 결과 =====
+        content.append(Paragraph("👁️ 시선추적 분석 결과", header_style))
+        
+        eye_data = [
+            ['집중 시간', eye_tracking_result.get('focus_time', '측정되지 않음')],
+            ['시선 상태', eye_tracking_result.get('issues', '정상')],
+            ['집중도', eye_tracking_result.get('concentration', '측정되지 않음')],
+            ['추적 상태', '완료']
+        ]
+        
+        eye_table = Table(eye_data, colWidths=[50*mm, 100*mm])
+        eye_table.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), font_name),
+            ('FONTSIZE', (0, 0), (-1, -1), 11),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#e3f2fd')),  # 연한 파란색
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        
+        content.append(eye_table)
+        content.append(Spacer(1, 20))
+        # ===== 시선추적 섹션 끝 =====
         
         # 음성 분석 결과
         content.append(Paragraph("🎤 음성 분석 결과", header_style))
@@ -700,7 +729,8 @@ def download_pdf_report():
             "2. 다양한 장르의 책으로 독서 범위 넓히기",
             "3. 읽은 내용을 요약하여 말해보기",
             "4. 발음이 어려운 단어는 반복 연습하기",
-            "5. 3개월 후 재진단 받기"
+            "5. 시선 집중력 향상을 위한 집중 훈련",  # 시선추적 관련 추가
+            "6. 3개월 후 재진단 받기"
         ]
         
         for rec in recommendations:
@@ -739,9 +769,10 @@ def download_pdf_report():
                     "child_name": child_name,
                     "diagnosis_date": datetime.now().strftime("%Y-%m-%d"),
                     "speech_analysis": audio_result,
+                    "eye_tracking": eye_tracking_result,  # 시선추적 정보 추가
                     "pdf_generated": True,
-                    "total_tracking_results": len(tracking_results),
-                    "calibration_points": len(calibration_data)
+                    "total_tracking_results": eye_tracking_result.get('total_measurements', 0),
+                    "calibration_points": 5  # 고정값
                 }
             }
             

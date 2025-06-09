@@ -497,10 +497,13 @@ def save_report_to_db(member_id, child_name, pdf_data, filename):
     """DB에 PDF 리포트 저장 - 메모리 최적화"""
     connection = None
     try:
+        print(f"[DEBUG] DB 연결 시도...")
         connection = get_db_connection()
         if not connection:
+            print(f"[ERROR] DB 연결 실패!")
             return None
-                     
+        
+        print(f"[DEBUG] SQL 실행 중...")  
         with connection.cursor() as cursor:
             sql = """
             INSERT INTO pdf_reports (member_id, child_name, pdf_data, filename, created_at) 
@@ -510,7 +513,9 @@ def save_report_to_db(member_id, child_name, pdf_data, filename):
             cursor.execute(sql, (member_id, child_name, pdf_data, filename))
             connection.commit()
                      
-            return cursor.lastrowid
+            result = cursor.lastrowid
+            print(f"[DEBUG] 저장 결과: {result}")
+            return result
                  
     except Exception as e:
         print(f"[ERROR] PDF 저장 오류: {e}")

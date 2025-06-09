@@ -514,7 +514,7 @@ def save_report_to_db(member_id, child_name, pdf_data, filename):
                  
     except Exception as e:
         print(f"[ERROR] PDF 저장 오류: {e}")
-        return None
+        raise e
     finally:
         if connection:
             connection.close()

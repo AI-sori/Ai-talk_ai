@@ -61,6 +61,7 @@ DB_CONFIG = {
 
 def get_db_connection():
     """MySQL DB 연결 - 메모리 최적화"""
+    print(f"[DEBUG] DB_CONFIG 내용: {DB_CONFIG}")  # ← 설정 확인
     try:
         connection = pymysql.connect(
             **DB_CONFIG,
@@ -68,11 +69,13 @@ def get_db_connection():
             read_timeout=10,
             write_timeout=10
         )
+        print(f"[SUCCESS] DB 연결 성공!")  # ← 성공 로그
         return connection
     except Exception as e:
         print(f"[ERROR] DB 연결 실패: {e}")
+        print(f"[DEBUG] 연결 시도한 주소: {DB_CONFIG['host']}:{DB_CONFIG['port']}")  # ← 실제 연결 정보
         raise Exception(f"DB연결실패: {e}")
-
+    
 app = Flask(__name__, 
            template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates'),
            static_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static'))

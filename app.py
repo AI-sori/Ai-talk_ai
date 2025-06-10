@@ -786,7 +786,7 @@ def download_pdf_report():
             #report_id = save_report_to_db(user_id, report_text)
 
             filename = f"{child_name}_읽기진단리포트.pdf" 
-            report_id = save_report_to_db(user_id, child_name, pdf_data, filename)
+            report_id = save_report_to_db(user_id, child_name, pdf_binary_data, filename)
             
             
             if report_id:
@@ -801,10 +801,10 @@ def download_pdf_report():
         
         # PDF 파일 읽어서 Base64 인코딩
         with open(temp_pdf.name, 'rb') as f:
-            pdf_data = f.read()
+            pdf_binary_data = f.read()
         
         import base64
-        pdf_base64 = base64.b64encode(pdf_data).decode('utf-8')
+        pdf_base64 = base64.b64encode(pdf_binary_data).decode('utf-8')
         
         # 임시 파일들 정리
         os.unlink(temp_pdf.name)

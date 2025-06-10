@@ -71,7 +71,7 @@ def get_db_connection():
         return connection
     except Exception as e:
         print(f"[ERROR] DB 연결 실패: {e}")
-        return None
+        raise Exception(f"DB연결실패: {e}")
 
 app = Flask(__name__, 
            template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates'),
@@ -519,7 +519,7 @@ def save_report_to_db(member_id, child_name, pdf_data, filename):
                  
     except Exception as e:
         print(f"[ERROR] PDF 저장 오류: {e}")
-        raise e
+        raise Exception(f"DB저장실패: {e}")
     finally:
         if connection:
             connection.close()
@@ -757,6 +757,7 @@ def download_pdf_report():
         temp_pdf.close()
         
         print("[SUCCESS] 한글 PDF 생성 완료!")
+        error_msg = None
         
         # DB 저장!
         try:
@@ -796,6 +797,7 @@ def download_pdf_report():
         except Exception as db_error:
             print(f"[ERROR] DB 저장 오류: {db_error}")
             report_id = None
+            error_msg = str(db_error)
         
         # PDF 파일 읽어서 Base64 인코딩
         with open(temp_pdf.name, 'rb') as f:
@@ -819,7 +821,8 @@ def download_pdf_report():
             "pdf_data": pdf_base64,
             "filename": f"{child_name}_읽기진단리포트.pdf",
             "report_id": report_id,  # 백엔드에서 사용할 ID
-            "db_saved": report_id is not None  # DB 저장 성공 여부
+            "db_saved": report_id is not None,  # DB 저장 성공 여부
+            "error": error_msg
         })
         
     except Exception as e:

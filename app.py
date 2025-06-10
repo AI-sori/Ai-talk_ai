@@ -755,11 +755,18 @@ def download_pdf_report():
         # PDF 생성
         doc.build(content)
         temp_pdf.close()
-        
         print("[SUCCESS] 한글 PDF 생성 완료!")
+
+        # 1. PDF 파일을 바이너리로 읽기
+        with open(temp_pdf.name, 'rb') as f:
+            pdf_binary_data = f.read()
+
+        # 2. Base64 인코딩
+        import base64
+        pdf_base64 = base64.b64encode(pdf_binary_data).decode('utf-8')
+
+        # 3. DB 저장 시도
         error_msg = None
-        
-        # DB 저장!
         try:
             print("[INFO] DB에 리포트 저장 중...")
             
@@ -773,21 +780,15 @@ def download_pdf_report():
                     "child_name": child_name,
                     "diagnosis_date": datetime.now().strftime("%Y-%m-%d"),
                     "speech_analysis": audio_result,
-                    "eye_tracking": eye_tracking_result,  # 시선추적 정보 추가
+                    "eye_tracking": eye_tracking_result,
                     "pdf_generated": True,
                     "total_tracking_results": eye_tracking_result.get('total_measurements', 0),
-                    "calibration_points": 5  # 고정값
+                    "calibration_points": 5
                 }
             }
             
-            # 백엔드 텍스트 분석용 데이터 생성
-            #report_text = create_report_text(report_data)
-            # DB 저장
-            #report_id = save_report_to_db(user_id, report_text)
-
-            filename = f"{child_name}_읽기진단리포트.pdf" 
+            filename = f"{child_name}_읽기진단리포트.pdf"
             report_id = save_report_to_db(user_id, child_name, pdf_binary_data, filename)
-            
             
             if report_id:
                 print(f"[SUCCESS] 백엔드용 DB 저장 완료! Report ID: {report_id}")
@@ -798,30 +799,24 @@ def download_pdf_report():
             print(f"[ERROR] DB 저장 오류: {db_error}")
             report_id = None
             error_msg = str(db_error)
-        
-        # PDF 파일 읽어서 Base64 인코딩
-        with open(temp_pdf.name, 'rb') as f:
-            pdf_binary_data = f.read()
-        
-        import base64
-        pdf_base64 = base64.b64encode(pdf_binary_data).decode('utf-8')
-        
-        # 임시 파일들 정리
+
+        # 4. 임시 파일 정리
         os.unlink(temp_pdf.name)
         if 'temp_font' in locals():
             try:
                 os.unlink(temp_font.name)
             except:
                 pass
-        
+
         print(f"[INFO] Report ID {report_id}로 DB 저장 완료!")
-        
+
+        # 5. 응답 반환
         return jsonify({
             "status": "success",
             "pdf_data": pdf_base64,
             "filename": f"{child_name}_읽기진단리포트.pdf",
-            "report_id": report_id,  # 백엔드에서 사용할 ID
-            "db_saved": report_id is not None,  # DB 저장 성공 여부
+            "report_id": report_id,
+            "db_saved": report_id is not None,
             "error": error_msg
         })
         

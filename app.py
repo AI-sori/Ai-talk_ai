@@ -839,8 +839,22 @@ def health_check():
         "tracking_results": len(tracking_results)
     })
 
+# ... (이전의 모든 코드와 라우트 함수는 그대로 유지됩니다)
+# ...
+
 if __name__ == '__main__':
+    # Flask 서버 실행 전에 init_tracker()를 호출하여 모델 다운로드 및 로딩을 시도합니다.
+    # 이렇게 하면 첫 사용자 요청이 콜드 스타트의 긴 다운로드 시간을 겪지 않습니다.
+    try:
+        # init_tracker 라우트 함수를 직접 호출하여 gaze_tracker와 audio_analyzer를 초기화합니다.
+        init_tracker() 
+        print("[INFO] 초기 모델 다운로드 및 로드 작업 완료.")
+    except Exception as e:
+        # 모델 로드에 실패하더라도 서버는 시작할 수 있도록 로그만 남기고 다음으로 넘어갑니다.
+        print(f"[CRITICAL] Initial model load failed during startup: {e}. Starting Flask anyway.")
+    
     port = int(os.environ.get('PORT', 5000))
     print(f"[INFO] Flask 서버 시작... 포트: {port}")
     print(f"[INFO] 메모리 최적화 모드 활성화")
+    # debug=False는 Render 배포 시 권장되는 설정입니다.
     app.run(debug=False, host='0.0.0.0', port=port)

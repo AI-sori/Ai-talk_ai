@@ -2,20 +2,17 @@
 Flask==2.3.3
 opencv-python-headless==4.8.1.78
 numpy==1.24.3
-#Pillow==10.0.1
 
-# 선택적 패키지 (더 나은 기능을 위해 권장)
-# 음성 인식용
-#openai-whisper==20231117
-#librosa==0.10.1
+# 음성 인식용 (모델은 외부에서 로드)
+openai-whisper==20231117
+librosa==0.10.1
+# torch는 whisper의 의존성이므로 따로 명시하지 않아도 설치됩니다.
 
-# 얼굴 감지용  
-#mediapipe==0.10.7
+# 얼굴 감지용 (모델은 라이브러리 내부 자원 사용)
+mediapipe==0.10.7
 
 # 추가 도구
-#Pillow==10.0.1
-#scipy==1.11.3
+scipy==1.11.3
 
 reportlab==4.0.4
-#matplotlib==3.7.2
 PyMySQL==1.1.0

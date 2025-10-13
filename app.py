@@ -7,6 +7,7 @@ import base64
 import numpy as np
 import pymysql
 import gc  # 가비지 컬렉션
+from datetime import datetime, timedelta
 
 # 현재 디렉토리를 Python 경로에 추가
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -841,23 +842,16 @@ def health_check():
 
 
 if __name__ == '__main__':
-    # Flask 애플리케이션 컨텍스트 내부에서 초기화 작업을 실행하여
-    # "Working outside of application context" 오류를 방지합니다.
-    
+    # Flask 애플리케이션 컨텍스트 문제 해결
     port = int(os.environ.get('PORT', 5000))
     
     print(f"[INFO] Flask 서버 시작... 포트: {port}")
     print(f"[INFO] 메모리 최적화 모드 활성화")
 
-    # Flask 애플리케이션 컨텍스트를 수동으로 설정
-    with app.app_context(): 
-        try:
-            # init_tracker 라우트 함수를 컨텍스트 안에서 호출합니다.
-            init_tracker() 
-            print("[INFO] 초기 모델 다운로드 및 로드 작업 완료.")
-        except Exception as e:
-            # 모델 로드나 DB 연결 문제 발생 시 로그 출력
-            print(f"[CRITICAL] Initial model load failed during startup: {e}. Starting Flask anyway.")
-
+    # ===== 핵심 수정: Application Context 오류 해결 =====
+    # init_tracker()를 서버 시작 전에 자동 호출하지 않음
+    # 대신 첫 요청 시 자동으로 초기화되도록 변경
+    print("[INFO] 트래커는 첫 요청 시 자동으로 초기화됩니다.")
+    
     # debug=False는 Render 배포 시 권장되는 설정입니다.
     app.run(debug=False, host='0.0.0.0', port=port)

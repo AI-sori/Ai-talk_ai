@@ -110,8 +110,14 @@ def init_tracker():
     global gaze_tracker, audio_analyzer
     try:
         print("[INFO] 트래커 초기화 시작...")
+        print("[DEBUG] GazeTracker 생성 중...")
         gaze_tracker = GazeTracker()
+        print("[DEBUG] GazeTracker 생성 완료")
+        
+        print("[DEBUG] AudioAnalyzer 생성 중...")
         audio_analyzer = AudioAnalyzer()
+        print("[DEBUG] AudioAnalyzer 생성 완료")
+        
         cleanup_memory()  # 메모리 정리
         print("[INFO] 트래커 초기화 완료")
         return jsonify({
@@ -120,10 +126,13 @@ def init_tracker():
         })
     except Exception as e:
         print(f"[ERROR] 초기화 오류: {e}")
+        import traceback
+        traceback.print_exc()  # 상세 에러 출력
         return jsonify({
             "status": "error", 
             "message": f"초기화 실패: {str(e)}"
-        })
+        }), 500  # 500 상태 코드 반환
+
 
 @app.route('/calibrate', methods=['POST'])
 def calibrate():

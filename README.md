@@ -54,6 +54,9 @@ pip install -r requirements.txt
 - **말하기 유창성**: 속도, 일시정지 분석
 - **이해력**: 내용 키워드 분석
 
+### 환경 변수
+- **AUDIO_MODEL_URL**: Whisper 모델 다운로드 URL (HuggingFace)
+
 ## 📊 API 응답 형식
 
 ```json

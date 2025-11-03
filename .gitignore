@@ -7,3 +7,8 @@ venv/
 *.mp4
 .venv/
 diagnosis_data/
+
+##시험용
+models/
+static/
+templates/

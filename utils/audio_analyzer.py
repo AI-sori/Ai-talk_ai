@@ -3,16 +3,19 @@ import tempfile
 import time
 import uuid
 import random
-import torch
-import whisper
+import torch # PyTorch 추가
+import whisper # Whisper 라이브러리 사용
 
+# 1단계에서 생성된 다운로드 유틸리티 import 시도
 try:
+    # model_downloader 모듈이 같은 utils 폴더에 있다고 가정합니다.
     from utils.model_downloader import download_model
     EXTERNAL_MODEL_DOWNLOAD = True
 except ImportError as e:
     print(f"[ERROR] model_downloader 모듈 로드 실패: {e}")
     EXTERNAL_MODEL_DOWNLOAD = False
 
+# Whisper 라이브러리가 로드에 실패했을 경우를 대비해 전역 변수 설정
 WHISPER_LOADED = False
 WHISPER_MODEL = None
 
@@ -22,69 +25,83 @@ class AudioAnalyzer:
 
         self.use_dummy = True
         
+        # --- [핵심: 외부 모델 다운로드 로직] ---
         model_path = None
         
         if EXTERNAL_MODEL_DOWNLOAD:
+            # 환경 변수와 로컬 파일 이름 설정 (Hugging Face URL과 매칭)
             MODEL_ENV_VAR = "AUDIO_MODEL_URL"
             MODEL_LOCAL_NAME = "whisper_base.pt"
+            
+            # 1. 외부 URL에서 파일 다운로드 시도
             model_path = download_model(MODEL_ENV_VAR, MODEL_LOCAL_NAME)
             
         if model_path:
+            # 2. 다운로드된 경로를 사용하여 모델 로드 시도
             try:
+                
                 print(f"[INFO] Whisper 모델 로딩 시작. 경로: {model_path}")
                 
+                # --- [수정된 핵심 로직: torch를 사용하여 모델 파일을 직접 로드] ---
+                # 1. 모델 체크포인트를 다운로드된 파일 경로에서 직접 로드
                 checkpoint = torch.load(model_path, map_location="cpu")
+                
+                # 2. whisper.model.Whisper 객체를 생성하고 로드
                 dims = checkpoint["dims"]
                 WHISPER_MODEL = whisper.model.Whisper(dims)
                 WHISPER_MODEL.load_state_dict(checkpoint["model_state_dict"])
                 WHISPER_MODEL.to("cpu") 
                 
-                del checkpoint
+                del checkpoint # 메모리 해제
+                # --- [수정된 핵심 로직 끝] ---
                 
                 self.use_dummy = False
                 WHISPER_LOADED = True
-                print("[SUCCESS] Whisper 로드 및 초기화 성공")
+                print("[SUCCESS] Whisper 로드 및 초기화 성공 (외부 로드)")
             except Exception as e:
                 print(f"[ERROR] Whisper 실제 로드 실패: {e}")
+                # 로드 실패 시 모델 파일을 다시 다운로드할 수 있도록 삭제 (선택 사항)
                 if model_path and os.path.exists(model_path):
                     os.remove(model_path)
                 self.use_dummy = True
+        
+        # --- [외부 로드가 실패했을 경우 fallback: 기존 로직은 제거] ---
+        # 외부 로드가 유일한 성공 경로이며, 실패 시에는 더미 모드로만 작동하도록 남겨둡니다.
+
 
     def analyze(self, audio_file):
-        """
-        audio_file: Gradio는 파일 경로(str)를 전달, Flask는 FileStorage 객체
-        """
         global WHISPER_MODEL
-        
-        # Gradio: audio_file은 이미 파일 경로(str)
-        if isinstance(audio_file, str):
-            audio_path = audio_file
-            print(f"[DEBUG] Gradio 음성 파일 경로: {audio_path}")
-        else:
-            # Flask FileStorage 객체 처리 (하위 호환성)
-            print(f"[DEBUG] Flask 음성 파일 수신: {audio_file.filename}")
-            temp_dir = tempfile.gettempdir()
-            safe_name = f"audio_{uuid.uuid4().hex[:8]}_{int(time.time())}.wav"
-            audio_path = os.path.join(temp_dir, safe_name)
-            audio_file.save(audio_path)
+        print(f"[DEBUG] 음성 파일 수신: {audio_file.filename}, 크기: {audio_file.content_length}")
         
         if self.use_dummy or not WHISPER_LOADED:
             print("[INFO] 더미 모드로 분석")
             return self._get_realistic_dummy()
         
+        # Whisper 로드가 성공했을 경우, 실제 분석 로직 실행 (기존과 동일)
+        temp_path = None
         try:
-            # 파일 크기 확인
-            file_size = os.path.getsize(audio_path)
+            # 안전한 임시 파일 생성
+            temp_dir = tempfile.gettempdir()
+            safe_name = f"audio_{uuid.uuid4().hex[:8]}_{int(time.time())}.wav"
+            temp_path = os.path.join(temp_dir, safe_name)
+            
+            # 파일 저장
+            audio_file.save(temp_path)
+            time.sleep(0.5) 
+            
+            # 파일 크기 확인 (중략)
+            file_size = os.path.getsize(temp_path)
             
             if file_size < 2000:
                 print("[WARN] 파일이 너무 작음")
                 return self._get_short_audio_result()
             
-            # Whisper 음성 인식
+            # Whisper 음성 인식 
             print("[DEBUG] Whisper 시작...")
+            # transcribe 함수를 사용할 때 모델 객체를 명시적으로 전달
             result = whisper.transcribe( 
                 WHISPER_MODEL, 
-                audio_path,
+                temp_path,
                 language='ko',
                 task='transcribe',
                 fp16=False,
@@ -111,15 +128,16 @@ class AudioAnalyzer:
             return self._get_error_result(str(e))
             
         finally:
-            # Gradio: 임시 파일이 아닌 경우 삭제하지 않음
-            # Flask에서 생성한 임시 파일만 삭제
-            if not isinstance(audio_file, str) and os.path.exists(audio_path):
+            # 안전한 파일 삭제
+            if temp_path and os.path.exists(temp_path):
                 try:
                     time.sleep(0.2)
-                    os.remove(audio_path)
+                    os.remove(temp_path)
                     print(f"[DEBUG] 임시 파일 삭제됨")
                 except Exception as del_error:
                     print(f"[WARN] 파일 삭제 실패: {del_error}")
+    
+    # ... (중략: _get_error_result, _analyze_korean_speech, _calculate_comprehension, _get_realistic_dummy, _get_short_audio_result 메소드는 그대로 유지됩니다)
     
     def _get_error_result(self, error_msg):
         """실제 오류 결과"""
@@ -142,19 +160,21 @@ class AudioAnalyzer:
     
     def _analyze_korean_speech(self, text, whisper_result):
         """한국어 음성 분석"""
+        # 기본 정보
         word_count = len([w for w in text.split() if w.strip()])
         duration = whisper_result.get('segments', [{}])
         total_duration = duration[-1].get('end', 5.0) if duration else 5.0
         
         speaking_rate = (word_count / total_duration * 60) if total_duration > 0 else 60
         
-        # 발음 명확도
+        # 발음 명확도 (한국어 문자 비율 + Whisper 품질)
         korean_chars = len([c for c in text if '\uac00' <= c <= '\ud7a3'])
         total_chars = len(text.replace(' ', ''))
         korean_ratio = korean_chars / total_chars if total_chars > 0 else 0
         
         base_clarity = 40 + (korean_ratio * 40)
         
+        # Whisper 신뢰도 추가
         segments = whisper_result.get('segments', [])
         if segments:
             avg_logprob = sum(s.get('avg_logprob', -1) for s in segments) / len(segments)
@@ -163,9 +183,10 @@ class AudioAnalyzer:
         
         pronunciation_clarity = max(50, min(95, base_clarity))
         
-        # 유창성
+        # 유창성 (말하기 속도 + 텍스트 완성도)
         speed_score = 70 if 80 <= speaking_rate <= 180 else 50
         
+        # 문장 완성도 보너스
         sentence_bonus = 0
         if '.' in text or '!' in text or '?' in text:
             sentence_bonus += 10
@@ -174,7 +195,7 @@ class AudioAnalyzer:
         
         fluency = min(95, speed_score + sentence_bonus)
         
-        # 이해도
+        # 이해도 (내용 분석)
         comprehension = self._calculate_comprehension(text, pronunciation_clarity, fluency)
         
         return {
@@ -195,9 +216,10 @@ class AudioAnalyzer:
         }
     
     def _calculate_comprehension(self, text, clarity, fluency):
-        """이해도 계산"""
+        """이해도 계산 - 내용 기반"""
         base_score = (clarity + fluency) / 2
         
+        # 독서 관련 키워드 분석
         reading_keywords = [
             '독서', '책', '읽', '이야기', '내용', '생각', '느낌',
             '재미', '흥미', '배우', '알', '좋', '재밌', '신기',
@@ -207,6 +229,7 @@ class AudioAnalyzer:
         keyword_count = sum(1 for keyword in reading_keywords if keyword in text)
         content_bonus = min(20, keyword_count * 3)
         
+        # 문장 구조 분석
         structure_bonus = 0
         if len(text) > 20:
             structure_bonus += 5

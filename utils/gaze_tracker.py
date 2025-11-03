@@ -271,3 +271,7 @@ class GazeTracker:
             'position': (random.randint(300, 700), random.randint(250, 450)),
             'error_offset': random.uniform(30, 70)
         }
+
+
+        
+   

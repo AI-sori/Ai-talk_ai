@@ -5,6 +5,8 @@ import uuid
 import random
 import torch # PyTorch 추가
 import whisper # Whisper 라이브러리 사용
+import librosa  # ✅ 추가
+import numpy as np  # ✅ 추가
 
 # 1단계에서 생성된 다운로드 유틸리티 import 시도
 try:
@@ -70,6 +72,7 @@ class AudioAnalyzer:
 
 
     def analyze(self, audio_file):
+        """음성 분석 (librosa 추가)"""
         global WHISPER_MODEL
         print(f"[DEBUG] 음성 파일 수신: {audio_file.filename}, 크기: {audio_file.content_length}")
         
@@ -96,6 +99,10 @@ class AudioAnalyzer:
                 print("[WARN] 파일이 너무 작음")
                 return self._get_short_audio_result()
             
+            # ✅ librosa로 음성 특징 추출
+            print("[DEBUG] librosa 음성 특징 추출 시작...")
+            audio_features = self._extract_audio_features(temp_path)
+            
             # Whisper 음성 인식 
             print("[DEBUG] Whisper 시작...")
             # transcribe 함수를 사용할 때 모델 객체를 명시적으로 전달
@@ -106,8 +113,6 @@ class AudioAnalyzer:
                 task='transcribe',
                 fp16=False,
                 verbose=True,
-                initial_prompt="다음은 한국어 음성입니다:",
-                temperature=0.0
             )
             
             text = result.get('text', '').strip()
@@ -116,8 +121,8 @@ class AudioAnalyzer:
                 print("[WARN] 인식된 텍스트가 너무 짧음")
                 return self._get_short_audio_result()
             
-            # 분석 수행
-            analysis = self._analyze_korean_speech(text, result)
+            # 분석 수행(audio_features 포함)
+            analysis = self._analyze_korean_speech(text, result, audio_features)
             print(f"[SUCCESS] 실제 음성 분석 완료")
             return analysis
             
@@ -137,8 +142,75 @@ class AudioAnalyzer:
                 except Exception as del_error:
                     print(f"[WARN] 파일 삭제 실패: {del_error}")
     
-    # ... (중략: _get_error_result, _analyze_korean_speech, _calculate_comprehension, _get_realistic_dummy, _get_short_audio_result 메소드는 그대로 유지됩니다)
-    
+    def _extract_audio_features(self, audio_path):
+        """✅ librosa로 음성 특징 추출"""
+        try:
+            # 1. 음성 로드 (16kHz로 리샘플링)
+            y, sr = librosa.load(audio_path, sr=16000)
+            print(f"[DEBUG] 오디오 로드 완료: {len(y)} samples, {sr}Hz")
+            
+            # 2. 에너지(RMS) 분석
+            energy = librosa.feature.rms(y=y)[0]
+            
+            # 3. 무음/발화 구간 분리 (20dB 기준)
+            threshold = 0.02  # RMS 임계값
+            silence_frames = np.sum(energy < threshold)
+            speech_frames = np.sum(energy >= threshold)
+            
+            total_frames = len(energy)
+            speech_ratio = speech_frames / total_frames if total_frames > 0 else 0
+            
+            print(f"[DEBUG] 발화 비율: {speech_ratio:.2%}")
+            
+            # 4. 피치 분석
+            pitches, magnitudes = librosa.piptrack(y=y, sr=sr)
+            
+            # 유효한 피치만 추출
+            pitch_values = []
+            for t in range(pitches.shape[1]):
+                index = magnitudes[:, t].argmax()
+                pitch = pitches[index, t]
+                if pitch > 0:  # 0이 아닌 피치만
+                    pitch_values.append(pitch)
+            
+            if pitch_values:
+                avg_pitch = np.mean(pitch_values)
+                pitch_variation = np.std(pitch_values)
+            else:
+                avg_pitch = 150.0
+                pitch_variation = 0.0
+            
+            print(f"[DEBUG] 평균 피치: {avg_pitch:.1f}Hz")
+            
+            # 5. 음량 분석
+            avg_volume = np.mean(energy)
+            volume_variation = np.std(energy)
+            
+            print(f"[DEBUG] 평균 음량: {avg_volume:.3f}")
+            
+            return {
+                'speech_ratio': float(speech_ratio),
+                'avg_pitch': float(avg_pitch),
+                'pitch_variation': float(pitch_variation),
+                'avg_volume': float(avg_volume),
+                'volume_variation': float(volume_variation),
+                'silence_frames': int(silence_frames),
+                'speech_frames': int(speech_frames)
+            }
+            
+        except Exception as e:
+            print(f"[ERROR] librosa 특징 추출 실패: {e}")
+            # 실패 시 더미값 반환
+            return {
+                'speech_ratio': 0.7,
+                'avg_pitch': 150.0,
+                'pitch_variation': 25.0,
+                'avg_volume': 0.1,
+                'volume_variation': 0.05,
+                'silence_frames': 0,
+                'speech_frames': 0
+            }
+        
     def _get_error_result(self, error_msg):
         """실제 오류 결과"""
         return {
@@ -158,9 +230,10 @@ class AudioAnalyzer:
             }
         }
     
-    def _analyze_korean_speech(self, text, whisper_result):
-        """한국어 음성 분석"""
-        # 기본 정보
+    def _analyze_korean_speech(self, text, whisper_result, audio_features):
+        """한국어 음성 분석 (librosa 특징 포함)"""
+
+        # 1. 기본 정보
         word_count = len([w for w in text.split() if w.strip()])
         duration = whisper_result.get('segments', [{}])
         total_duration = duration[-1].get('end', 5.0) if duration else 5.0
@@ -182,18 +255,27 @@ class AudioAnalyzer:
             base_clarity += whisper_bonus
         
         pronunciation_clarity = max(50, min(95, base_clarity))
+
+        # ✅ 3. 유창성 (librosa 기반으로 개선)
+        speech_ratio = audio_features['speech_ratio']
         
-        # 유창성 (말하기 속도 + 텍스트 완성도)
-        speed_score = 70 if 80 <= speaking_rate <= 180 else 50
+        # 발화 비율 점수 (발화가 많을수록 좋음)
+        speech_score =speech_ratio * 60  # 0~60점
+
+        # 말하기 속도 점수
+        if 80 <= speaking_rate <= 180:
+            speed_score = 30  # 적정 속도
+        else:
+            speed_score = 15  # 너무 빠르거나 느림
         
-        # 문장 완성도 보너스
+        # 문장 완성도
         sentence_bonus = 0
         if '.' in text or '!' in text or '?' in text:
-            sentence_bonus += 10
+            sentence_bonus += 5
         if len(text) > 15:
-            sentence_bonus += 10
+            sentence_bonus += 5
         
-        fluency = min(95, speed_score + sentence_bonus)
+        fluency = min(95, max(30, speech_score + speed_score + sentence_bonus))
         
         # 이해도 (내용 분석)
         comprehension = self._calculate_comprehension(text, pronunciation_clarity, fluency)
@@ -207,11 +289,11 @@ class AudioAnalyzer:
             'fluency': f"{fluency:.1f}%",
             'comprehension': f"{comprehension:.1f}%",
             'speech_features': {
-                'avg_pitch': 150.0,
-                'pitch_variation': 25.0,
-                'avg_volume': 0.1,
-                'volume_variation': 0.05,
-                'speech_ratio': 0.7
+                'avg_pitch': audio_features['avg_pitch'],
+                'pitch_variation': audio_features['pitch_variation'],
+                'avg_volume': audio_features['avg_volume'],
+                'volume_variation': audio_features['volume_variation'],
+                'speech_ratio': audio_features['speech_ratio']
             }
         }
     

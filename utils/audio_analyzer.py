@@ -24,53 +24,23 @@ WHISPER_MODEL = None
 class AudioAnalyzer:
     def __init__(self):
         global WHISPER_LOADED, WHISPER_MODEL
-
+        
         self.use_dummy = True
         
-        # --- [핵심: 외부 모델 다운로드 로직] ---
-        model_path = None
-        
-        if EXTERNAL_MODEL_DOWNLOAD:
-            # 환경 변수와 로컬 파일 이름 설정 (Hugging Face URL과 매칭)
-            MODEL_ENV_VAR = "AUDIO_MODEL_URL"
-            MODEL_LOCAL_NAME = "whisper_base.pt"
+        try:
+            print("[INFO] Whisper 모델 로딩 중...")
             
-            # 1. 외부 URL에서 파일 다운로드 시도
-            model_path = download_model(MODEL_ENV_VAR, MODEL_LOCAL_NAME)
+            # ✅ 간단하게 공식 방법 사용
+            WHISPER_MODEL = whisper.load_model("base")
             
-        if model_path:
-            # 2. 다운로드된 경로를 사용하여 모델 로드 시도
-            try:
-                
-                print(f"[INFO] Whisper 모델 로딩 시작. 경로: {model_path}")
-                
-                # --- [수정된 핵심 로직: torch를 사용하여 모델 파일을 직접 로드] ---
-                # 1. 모델 체크포인트를 다운로드된 파일 경로에서 직접 로드
-                checkpoint = torch.load(model_path, map_location="cpu")
-                
-                # 2. whisper.model.Whisper 객체를 생성하고 로드
-                dims = checkpoint["dims"]
-                WHISPER_MODEL = whisper.model.Whisper(dims)
-                WHISPER_MODEL.load_state_dict(checkpoint["model_state_dict"])
-                WHISPER_MODEL.to("cpu") 
-                
-                del checkpoint # 메모리 해제
-                # --- [수정된 핵심 로직 끝] ---
-                
-                self.use_dummy = False
-                WHISPER_LOADED = True
-                print("[SUCCESS] Whisper 로드 및 초기화 성공 (외부 로드)")
-            except Exception as e:
-                print(f"[ERROR] Whisper 실제 로드 실패: {e}")
-                # 로드 실패 시 모델 파일을 다시 다운로드할 수 있도록 삭제 (선택 사항)
-                if model_path and os.path.exists(model_path):
-                    os.remove(model_path)
-                self.use_dummy = True
-        
-        # --- [외부 로드가 실패했을 경우 fallback: 기존 로직은 제거] ---
-        # 외부 로드가 유일한 성공 경로이며, 실패 시에는 더미 모드로만 작동하도록 남겨둡니다.
-
-
+            self.use_dummy = False
+            WHISPER_LOADED = True
+            print("[SUCCESS] Whisper 로드 성공")
+            
+        except Exception as e:
+            print(f"[ERROR] Whisper 로드 실패: {e}")
+            self.use_dummy = True
+            
     def analyze(self, audio_file):
         """음성 분석 (librosa 추가)"""
         global WHISPER_MODEL

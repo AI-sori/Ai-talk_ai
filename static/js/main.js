@@ -60,7 +60,7 @@ const el = {
     stopRecordBtn: document.getElementById('stopRecordBtn'),
     recordingStatus: document.getElementById('recordingStatus'),
     childName: document.getElementById('childName'),
-    userId: document.getElementById('userId'),
+    userEmail: document.getElementById('userEmail'),
     generateReportBtn: document.getElementById('generateReportBtn'),
     reportContent: document.getElementById('reportContent'),
     downloadReportBtn: document.getElementById('downloadReportBtn'),
@@ -438,10 +438,15 @@ async function analyzeAudio(audioBlob) {
 async function generateReport() {
     try {
         const childName = el.childName.value.trim();
-        const userId = parseInt(el.userId.value) || 1;
+        const userEmail = el.userEmail.value.trim(); //이메일로 변경
         
         if (!childName) {
             updateStatus('아동 이름을 입력하세요', 'error');
+            return;
+        }
+
+        if (!userEmail) {  // 추가
+            updateStatus('이메일을 입력하세요', 'error');
             return;
         }
         
@@ -453,7 +458,7 @@ async function generateReport() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 child_name: childName,
-                user_id: userId,
+                user_email: userEmail, //변경
                 audio_result: audioResult || {}
             })
         });
@@ -584,12 +589,18 @@ ${r.feedback.recommended_activities.slice(0, 4).map(activity => `• ${activity}
 // main.js에서 downloadPDFReport 함수 수정
 async function downloadPDFReport() {
     const childName = el.childName.value.trim();
-    const userId = parseInt(el.userId.value) || 1;
+    const userEmail = el.userEmail.value.trim();
     
     if (!childName) {
         updateStatus('아동 이름을 입력해주세요.', 'error');
         return;
     }
+
+    if (!userEmail) {  // 추가
+        updateStatus('이메일을 입력해주세요.', 'error');
+        return;
+    }
+
     
     const audioData = audioResult || {
         transcription: '음성 분석 결과 없음',
@@ -607,7 +618,7 @@ async function downloadPDFReport() {
         
         console.log('[DEBUG] 요청 데이터:', {
             child_name: childName,
-            user_id: userId,
+            user_email: userEmail,
             audio_result: audioData
         });
         
@@ -626,7 +637,7 @@ async function downloadPDFReport() {
         console.log('[DEBUG] 응답 상태:', response.status);
         console.log('[DEBUG] 응답 헤더:', response.headers);
         
-        // 🔥 응답을 텍스트로 먼저 받아서 확인
+        // 응답을 텍스트로 먼저 받아서 확인
         const responseText = await response.text();
         console.log('[DEBUG] 응답 내용:', responseText);
         

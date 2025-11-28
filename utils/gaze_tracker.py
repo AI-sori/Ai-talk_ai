@@ -4,6 +4,10 @@ import numpy as np
 import cv2
 import mediapipe as mp
 from .pupil_detector import PupilDetector  # 우리가 만든 것
+try:
+    from .evaluation import GazeAccuracyEvaluator, ReadingGroundTruth
+except:
+    from evaluation import GazeAccuracyEvaluator, ReadingGroundTruth
 
 class FaceDetector:
     """MediaPipe 기반 얼굴/눈 검출"""
@@ -145,9 +149,97 @@ class GazeTracker:
         self.screen_width = 1920
         self.screen_height = 1080
         
-        # ✅ 평가용 추가
+        # 보정 오차 계산용& error_offest에 사용중
         self.calibration_errors = []  # 오차 기록
         self.avg_calibration_error = 0.0
+
+        # ✅ 평가 기능 추가
+        self.evaluator = GazeAccuracyEvaluator()
+        self.ground_truth_generator = None
+        self.evaluation_mode = False
+    
+    def start_evaluation(self, duration=10.0):
+        """평가 모드 시작"""
+        self.evaluation_mode = True
+        self.ground_truth_generator = ReadingGroundTruth(duration)
+        self.ground_truth_generator.start()
+        self.evaluator = GazeAccuracyEvaluator()
+        print(f"[INFO] 평가 모드 시작 ({duration}초)")
+    
+    def track_reading(self, frame):
+        """읽기 추적 (기존 코드 + 평가 기록)"""
+        try:
+            # ✅ 평가 모드 기록을 먼저
+            import time
+            current_time = time.time()
+            
+            gaze_data = self.get_gaze_direction(frame)
+            
+            if not gaze_data:
+                result = self._get_default_result()
+                # ✅ 여기서도 기록
+                if self.evaluation_mode and self.ground_truth_generator:
+                    self.evaluator.add_prediction(current_time, result['direction'])
+                return result
+            
+            # 화면 좌표 변환
+            screen_pos = self._transform_gaze_to_screen(
+                gaze_data['gaze_x'],
+                gaze_data['gaze_y']
+            )
+            
+            if screen_pos:
+                direction = self._classify_direction(screen_pos[0])
+            else:
+                direction = self._classify_gaze_direction(gaze_data['gaze_x'])
+            
+            confidence = self._calculate_confidence(gaze_data)
+            error_offset = self.avg_calibration_error if self.calibrated else 50.0
+            
+            result = {
+                'direction': direction,
+                'confidence': confidence,
+                'position': screen_pos or (self.screen_width//2, self.screen_height//2),
+                'error_offset': error_offset
+            }
+            
+            # ✅ 평가 모드면 예측 기록
+            if self.evaluation_mode and self.ground_truth_generator:
+                self.evaluator.add_prediction(current_time, direction)
+            
+            return result
+            
+        except Exception as e:
+            print(f"[ERROR] 추적 오류: {e}")
+            result = self._get_default_result()
+            # ✅ 에러 시에도 기록
+            if self.evaluation_mode and self.ground_truth_generator:
+                import time
+                self.evaluator.add_prediction(time.time(), result['direction'])
+            return result
+    
+    def get_evaluation_results(self):
+        """평가 결과 반환"""
+        if not self.evaluation_mode or not self.ground_truth_generator:
+            return None
+        
+        # Ground Truth 생성
+        frame_times = [p['time'] for p in self.evaluator.predictions]
+        
+        ground_truth = []
+        for t in frame_times:
+            direction = self.ground_truth_generator.get_true_direction(t)
+            ground_truth.append({'time': t, 'direction': direction})
+        
+        self.evaluator.set_ground_truth(ground_truth)
+        
+        # 정확도 계산
+        results = self.evaluator.calculate_accuracy()
+        
+        if results:
+            print(f"[INFO] ✅ 정답 비율: {results['accuracy']:.2%}")
+        
+        return results
     
     def get_gaze_direction(self, frame):
         """
@@ -252,42 +344,6 @@ class GazeTracker:
             return (float(screen_x), float(screen_y))
         except:
             return None
-    
-    def track_reading(self, frame):
-        """
-        읽기 추적 (기존 인터페이스 유지)
-        """
-        try:
-            gaze_data = self.get_gaze_direction(frame)
-            if not gaze_data:
-                return self._get_default_result()
-            
-            # 화면 좌표 변환
-            screen_pos = self._transform_gaze_to_screen(
-                gaze_data['gaze_x'],
-                gaze_data['gaze_y']
-            )
-            
-            if screen_pos:
-                direction = self._classify_direction(screen_pos[0])
-            else:
-                direction = self._classify_gaze_direction(gaze_data['gaze_x'])
-            
-            confidence = self._calculate_confidence(gaze_data)
-            
-            # ✅ 수정: 실제 오차 사용
-            error_offset = self.avg_calibration_error if self.calibrated else 50.0
-            
-            return {
-                'direction': direction,
-                'confidence': confidence,
-                'position': screen_pos or (self.screen_width//2, self.screen_height//2),
-                'error_offset': error_offset
-            }
-            
-        except Exception as e:
-            print(f"[ERROR] 추적 오류: {e}")
-            return self._get_default_result()
     
     def _classify_direction(self, screen_x):
         """화면 좌표 기반 방향 분류"""

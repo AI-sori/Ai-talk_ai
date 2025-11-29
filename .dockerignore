@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+.Python
+*.egg-info/
+
+# 가상환경
+venv/
+env/
+.venv
+
+# 불필요한 모델 파일만 제외
+models/best_resnet_model.pth
+models/gaze_model.py
+
+# Git
+.git/
+.gitignore
+
+# 기타
+*.md
+.env
+.DS_Store
+*.log

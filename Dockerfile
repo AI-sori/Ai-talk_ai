@@ -4,13 +4,14 @@ FROM python:3.9-slim
 # 작업 디렉토리
 WORKDIR /app
 
-# 필수 시스템 패키지만 설치
+# 필수 시스템 패키지 설치
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     libgomp1 \
     libsndfile1 \
+    libsndfile1-dev \
     ffmpeg && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*

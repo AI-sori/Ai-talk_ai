@@ -4,14 +4,11 @@ FROM python:3.9-slim
 # 작업 디렉토리
 WORKDIR /app
 
-# 시스템 패키지 설치 (패키지명 수정)
+# 필수 시스템 패키지만 설치
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender1 \
     libgomp1 \
     libsndfile1 \
     ffmpeg && \
@@ -22,7 +19,10 @@ RUN apt-get update && \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 전체 프로젝트 복사
+# Whisper tiny 모델 사전 다운로드
+RUN python -c "import whisper; whisper.load_model('tiny')"
+
+# 프로젝트 파일 복사
 COPY . .
 
 # 포트 설정

@@ -30,8 +30,8 @@ class AudioAnalyzer:
         try:
             print("[INFO] Whisper 모델 로딩 중...")
             
-            # ✅ 간단하게 공식 방법 사용
-            WHISPER_MODEL = whisper.load_model("base")
+            # 바로 다운
+            WHISPER_MODEL = whisper.load_model("tiny")
             
             self.use_dummy = False
             WHISPER_LOADED = True

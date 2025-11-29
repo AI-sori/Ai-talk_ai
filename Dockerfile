@@ -4,14 +4,14 @@ FROM python:3.9-slim
 # 작업 디렉토리
 WORKDIR /app
 
-# 시스템 패키지 설치 (재시도 로직 추가)
+# 시스템 패키지 설치 (패키지명 수정)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
-    libxrender-dev \
+    libxrender1 \
     libgomp1 \
     libsndfile1 \
     ffmpeg && \

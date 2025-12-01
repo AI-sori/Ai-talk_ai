@@ -78,18 +78,28 @@ class AudioAnalyzer:
             
             # Whisper 음성 인식 
             print("[DEBUG] Whisper 시작...")
+
+            # ✅ 16kHz mono WAV로 재변환
+            import soundfile as sf
+            temp_16k = temp_path.replace('.wav', '_16k.wav')
+            y, sr = librosa.load(temp_path, sr=16000)
+            sf.write(temp_16k, y, 16000)
+
             # transcribe 함수를 사용할 때 모델 객체를 명시적으로 전달
-            result = whisper.transcribe( 
-                WHISPER_MODEL, 
-                temp_path,
+            # ✅ 올바른 방식으로 transcribe
+            result = WHISPER_MODEL.transcribe(
+                temp_16k,  # 재변환된 파일
                 language='ko',
-                task='transcribe',
                 fp16=False,
-                verbose=True,
+                verbose=False
             )
-            
+
             text = result.get('text', '').strip()
-            
+
+            # 정리
+            if os.path.exists(temp_16k):
+                os.remove(temp_16k)
+                        
             if not text or len(text) < 3:
                 print("[WARN] 인식된 텍스트가 너무 짧음")
                 return self._get_short_audio_result()

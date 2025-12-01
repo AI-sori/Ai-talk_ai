@@ -445,8 +445,6 @@ async function analyzeAudio(audioBlob) {
     }
 }
 
-이제 60초 기다리고 타임아웃 메시지 뜰 거예요! ⏱️
-수정하고 push! 🚀Claude는 실수를 할 수 있습니다. 응답을 반드시 다시 확인해 주세요.
 // 리포트 생성
 async function generateReport() {
     try {

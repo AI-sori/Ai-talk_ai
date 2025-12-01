@@ -425,9 +425,13 @@ async function analyzeAudio(audioBlob) {
         clearTimeout(timeout);
         
         const result = await response.json();
+        console.log('[DEBUG] 전체 응답:', result);
         
         if (result.status === 'success') {
-            audioResult = result.result;
+              // ✅ result.result 또는 result.data 확인
+              audioResult = result.result || result.data || result;
+              console.log('[DEBUG] audioResult 저장:', audioResult);  // ← 추가!
+              
             el.recordingStatus.textContent = '✅ 분석 완료';
             updateStatus('음성 분석 완료!', 'success');
         } else {

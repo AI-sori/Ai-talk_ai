@@ -413,10 +413,16 @@ async function analyzeAudio(audioBlob) {
         const formData = new FormData();
         formData.append('audio', audioBlob, 'recording.wav');
         
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 60000); // 60초
+        
         const response = await fetch('/analyze_audio', {
             method: 'POST',
-            body: formData
+            body: formData,
+            signal: controller.signal
         });
+        
+        clearTimeout(timeout);
         
         const result = await response.json();
         
@@ -429,11 +435,18 @@ async function analyzeAudio(audioBlob) {
             updateStatus('음성 분석 실패', 'error');
         }
     } catch (error) {
-        el.recordingStatus.textContent = '❌ 오류';
-        updateStatus('음성 분석 오류', 'error');
+        if (error.name === 'AbortError') {
+            el.recordingStatus.textContent = '⏱️ 분석 시간 초과 (60초)';
+            updateStatus('음성 분석 시간 초과. 다시 시도하세요.', 'error');
+        } else {
+            el.recordingStatus.textContent = '❌ 오류';
+            updateStatus('음성 분석 오류', 'error');
+        }
     }
 }
 
+이제 60초 기다리고 타임아웃 메시지 뜰 거예요! ⏱️
+수정하고 push! 🚀Claude는 실수를 할 수 있습니다. 응답을 반드시 다시 확인해 주세요.
 // 리포트 생성
 async function generateReport() {
     try {

@@ -7,6 +7,9 @@ import torch # PyTorch 추가
 import whisper # Whisper 라이브러리 사용
 import librosa  # ✅ 추가
 import numpy as np  # ✅ 추가
+import warnings
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
 
 # 1단계에서 생성된 다운로드 유틸리티 import 시도
 try:

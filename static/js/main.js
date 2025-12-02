@@ -431,7 +431,7 @@ async function analyzeAudio(audioBlob) {
               // ✅ result.result 또는 result.data 확인
               audioResult = result.result || result.data || result;
               console.log('[DEBUG] audioResult 저장:', audioResult);  // ← 추가!
-              
+
             el.recordingStatus.textContent = '✅ 분석 완료';
             updateStatus('음성 분석 완료!', 'success');
         } else {
@@ -644,7 +644,7 @@ async function downloadPDFReport() {
             },
             body: JSON.stringify({
                 child_name: childName,
-                user_id: userId,
+                 user_email: userEmail,  // ← 이메일로 변경!
                 audio_result: audioData
             })
         });

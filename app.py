@@ -514,7 +514,7 @@ def generate_report():
             
             response = requests.post(
                 spring_url,
-                json=report,  # 전체 리포트 전송
+                json=learning_data,  # 핵심 데이터만 전송
                 timeout=10,
                 headers={'Content-Type': 'application/json'}
             )

@@ -13,6 +13,17 @@ from datetime import datetime, timedelta
 import os
 import json
 
+# ✅ 로그 즉시 출력 설정
+sys.stdout.flush()
+
+import logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    stream=sys.stdout
+)
+
+
 # Google Cloud 인증 설정
 if 'GOOGLE_APPLICATION_CREDENTIALS_JSON' in os.environ:
     # Railway 환경변수에서 JSON 읽기

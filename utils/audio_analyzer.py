@@ -3,110 +3,76 @@ import tempfile
 import time
 import uuid
 import random
-import torch # PyTorch 추가
-import whisper # Whisper 라이브러리 사용
-import librosa  # ✅ 추가
-import numpy as np  # ✅ 추가
+import librosa
+import numpy as np
 import warnings
+from google.cloud import speech
+
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=FutureWarning)
 
-# 1단계에서 생성된 다운로드 유틸리티 import 시도
-try:
-    # model_downloader 모듈이 같은 utils 폴더에 있다고 가정합니다.
-    from utils.model_downloader import download_model
-    EXTERNAL_MODEL_DOWNLOAD = True
-except ImportError as e:
-    print(f"[ERROR] model_downloader 모듈 로드 실패: {e}")
-    EXTERNAL_MODEL_DOWNLOAD = False
-
-# Whisper 라이브러리가 로드에 실패했을 경우를 대비해 전역 변수 설정
-WHISPER_LOADED = False
-WHISPER_MODEL = None
+# 전역 변수
+SPEECH_CLIENT = None
 
 class AudioAnalyzer:
     def __init__(self):
-        global WHISPER_LOADED, WHISPER_MODEL
+        global SPEECH_CLIENT
         
-        self.use_dummy = True
+        self.use_dummy = False
         
         try:
-            print("[INFO] Whisper 모델 로딩 중...")
-            
-            # 바로 다운
-            WHISPER_MODEL = whisper.load_model("tiny")
-            
-            self.use_dummy = False
-            WHISPER_LOADED = True
-            print("[SUCCESS] Whisper 로드 성공")
-            
+            print("[INFO] Google Speech API 초기화 중...")
+            SPEECH_CLIENT = speech.SpeechClient()
+            print("[SUCCESS] Google Speech API 준비 완료")
         except Exception as e:
-            print(f"[ERROR] Whisper 로드 실패: {e}")
+            print(f"[ERROR] Google Speech API 초기화 실패: {e}")
+            print("[INFO] 더미 모드로 전환")
             self.use_dummy = True
             
     def analyze(self, audio_file):
-        """음성 분석 (librosa 추가)"""
-        global WHISPER_MODEL
-        print(f"[DEBUG] 음성 파일 수신: {audio_file.filename}, 크기: {audio_file.content_length}")
+        """음성 분석 (Google Speech API)"""
+        global SPEECH_CLIENT
+        print(f"[DEBUG] 음성 파일 수신: {audio_file.filename}")
         
-        if self.use_dummy or not WHISPER_LOADED:
+        if self.use_dummy:
             print("[INFO] 더미 모드로 분석")
             return self._get_realistic_dummy()
         
-        # Whisper 로드가 성공했을 경우, 실제 분석 로직 실행 (기존과 동일)
         temp_path = None
         try:
             # 안전한 임시 파일 생성
             temp_dir = tempfile.gettempdir()
-            safe_name = f"audio_{uuid.uuid4().hex[:8]}_{int(time.time())}.wav"
+            safe_name = f"audio_{uuid.uuid4().hex[:8]}.wav"
             temp_path = os.path.join(temp_dir, safe_name)
             
             # 파일 저장
             audio_file.save(temp_path)
-            time.sleep(0.5) 
+            time.sleep(0.3)
             
-            # 파일 크기 확인 (중략)
             file_size = os.path.getsize(temp_path)
+            print(f"[DEBUG] 파일 크기: {file_size} bytes")
             
             if file_size < 2000:
                 print("[WARN] 파일이 너무 작음")
                 return self._get_short_audio_result()
             
             # ✅ librosa로 음성 특징 추출
-            print("[DEBUG] librosa 음성 특징 추출 시작...")
+            print("[INFO] librosa 음성 특징 추출 중...")
             audio_features = self._extract_audio_features(temp_path)
             
-            # Whisper 음성 인식 
-            print("[DEBUG] Whisper 시작...")
-
-            # ✅ 16kHz mono WAV로 재변환
-            import soundfile as sf
-            temp_16k = temp_path.replace('.wav', '_16k.wav')
-            y, sr = librosa.load(temp_path, sr=16000)
-            sf.write(temp_16k, y, 16000)
-
-            # transcribe 함수를 사용할 때 모델 객체를 명시적으로 전달
-            # ✅ 올바른 방식으로 transcribe
-            result = WHISPER_MODEL.transcribe(
-                temp_16k,  # 재변환된 파일
-                language='ko',
-                fp16=False,
-                verbose=False
-            )
-
-            text = result.get('text', '').strip()
-
-            # 정리
-            if os.path.exists(temp_16k):
-                os.remove(temp_16k)
-                        
+            # ✅ Google Speech API로 음성 인식
+            print("[INFO] Google Speech API 음성 인식 시작...")
+            text = self._google_speech_recognize(temp_path)
+            
             if not text or len(text) < 3:
                 print("[WARN] 인식된 텍스트가 너무 짧음")
                 return self._get_short_audio_result()
             
-            # 분석 수행(audio_features 포함)
-            analysis = self._analyze_korean_speech(text, result, audio_features)
-            print(f"[SUCCESS] 실제 음성 분석 완료")
+            print(f"[SUCCESS] 인식 완료: {text}")
+            
+            # 분석 수행
+            analysis = self._analyze_korean_speech(text, audio_features)
+            print(f"[SUCCESS] 음성 분석 완료")
             return analysis
             
         except Exception as e:
@@ -116,44 +82,90 @@ class AudioAnalyzer:
             return self._get_error_result(str(e))
             
         finally:
-            # 안전한 파일 삭제
             if temp_path and os.path.exists(temp_path):
                 try:
-                    time.sleep(0.2)
                     os.remove(temp_path)
-                    print(f"[DEBUG] 임시 파일 삭제됨")
+                    print("[DEBUG] 임시 파일 삭제됨")
                 except Exception as del_error:
                     print(f"[WARN] 파일 삭제 실패: {del_error}")
     
-    def _extract_audio_features(self, audio_path):
-        """✅ librosa로 음성 특징 추출"""
+    def _google_speech_recognize(self, audio_path):
+        """Google Speech API로 음성 인식"""
+        global SPEECH_CLIENT
+        
         try:
-            # 1. 음성 로드 (16kHz로 리샘플링)
-            y, sr = librosa.load(audio_path, sr=16000)
-            print(f"[DEBUG] 오디오 로드 완료: {len(y)} samples, {sr}Hz")
+            # 16kHz mono WAV로 변환
+            print("[DEBUG] 오디오 형식 변환 중...")
+            y, sr = librosa.load(audio_path, sr=16000, mono=True)
             
-            # 2. 에너지(RMS) 분석
+            # 임시 파일로 저장
+            import soundfile as sf
+            temp_wav = audio_path.replace('.wav', '_16k.wav')
+            sf.write(temp_wav, y, 16000)
+            
+            # 오디오 파일 읽기
+            with open(temp_wav, 'rb') as audio_file:
+                content = audio_file.read()
+            
+            # Google Speech API 설정
+            audio = speech.RecognitionAudio(content=content)
+            config = speech.RecognitionConfig(
+                encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+                sample_rate_hertz=16000,
+                language_code='ko-KR',
+                enable_automatic_punctuation=True,
+            )
+            
+            # 음성 인식 실행
+            print("[DEBUG] Google API 호출 중...")
+            response = SPEECH_CLIENT.recognize(config=config, audio=audio)
+            
+            # 임시 파일 삭제
+            if os.path.exists(temp_wav):
+                os.remove(temp_wav)
+            
+            # 결과 추출
+            if not response.results:
+                print("[WARN] 인식 결과 없음")
+                return ""
+            
+            text = response.results[0].alternatives[0].transcript
+            confidence = response.results[0].alternatives[0].confidence
+            
+            print(f"[DEBUG] 인식 신뢰도: {confidence:.2%}")
+            
+            return text.strip()
+            
+        except Exception as e:
+            print(f"[ERROR] Google Speech 인식 실패: {e}")
+            return ""
+    
+    def _extract_audio_features(self, audio_path):
+        """librosa로 음성 특징 추출"""
+        try:
+            # 음성 로드
+            y, sr = librosa.load(audio_path, sr=16000)
+            print(f"[DEBUG] 오디오 로드: {len(y)} samples, {sr}Hz")
+            
+            # 에너지(RMS) 분석
             energy = librosa.feature.rms(y=y)[0]
             
-            # 3. 무음/발화 구간 분리 (20dB 기준)
-            threshold = 0.02  # RMS 임계값
+            # 무음/발화 구간 분리
+            threshold = 0.02
             silence_frames = np.sum(energy < threshold)
             speech_frames = np.sum(energy >= threshold)
-            
             total_frames = len(energy)
             speech_ratio = speech_frames / total_frames if total_frames > 0 else 0
             
             print(f"[DEBUG] 발화 비율: {speech_ratio:.2%}")
             
-            # 4. 피치 분석
+            # 피치 분석
             pitches, magnitudes = librosa.piptrack(y=y, sr=sr)
-            
-            # 유효한 피치만 추출
             pitch_values = []
             for t in range(pitches.shape[1]):
                 index = magnitudes[:, t].argmax()
                 pitch = pitches[index, t]
-                if pitch > 0:  # 0이 아닌 피치만
+                if pitch > 0:
                     pitch_values.append(pitch)
             
             if pitch_values:
@@ -163,13 +175,9 @@ class AudioAnalyzer:
                 avg_pitch = 150.0
                 pitch_variation = 0.0
             
-            print(f"[DEBUG] 평균 피치: {avg_pitch:.1f}Hz")
-            
-            # 5. 음량 분석
+            # 음량 분석
             avg_volume = np.mean(energy)
             volume_variation = np.std(energy)
-            
-            print(f"[DEBUG] 평균 음량: {avg_volume:.3f}")
             
             return {
                 'speech_ratio': float(speech_ratio),
@@ -183,7 +191,6 @@ class AudioAnalyzer:
             
         except Exception as e:
             print(f"[ERROR] librosa 특징 추출 실패: {e}")
-            # 실패 시 더미값 반환
             return {
                 'speech_ratio': 0.7,
                 'avg_pitch': 150.0,
@@ -193,9 +200,72 @@ class AudioAnalyzer:
                 'silence_frames': 0,
                 'speech_frames': 0
             }
+    
+    def _analyze_korean_speech(self, text, audio_features):
+        """한국어 음성 분석"""
         
+        # 기본 정보
+        word_count = len([w for w in text.split() if w.strip()])
+        duration = len(text) / 5  # 대략 추정
+        speaking_rate = (word_count / duration * 60) if duration > 0 else 60
+        
+        # 발음 명확도 (librosa 기반)
+        speech_ratio = audio_features['speech_ratio']
+        volume_score = min(30, audio_features['avg_volume'] * 300)
+        clarity_base = speech_ratio * 60
+        pronunciation_clarity = min(95, max(50, clarity_base + volume_score))
+        
+        # 유창성
+        fluency_base = speech_ratio * 50
+        pitch_bonus = min(25, audio_features['pitch_variation'] / 2)
+        
+        # 속도 점수
+        if 80 <= speaking_rate <= 180:
+            speed_score = 20
+        else:
+            speed_score = 10
+        
+        fluency = min(95, max(50, fluency_base + pitch_bonus + speed_score))
+        
+        # 이해도
+        comprehension = self._calculate_comprehension(text, pronunciation_clarity, fluency)
+        
+        return {
+            'transcription': text,
+            'duration': f"{duration:.1f}초",
+            'word_count': word_count,
+            'speaking_rate': f"{speaking_rate:.1f} 단어/분",
+            'pronunciation_clarity': f"{pronunciation_clarity:.1f}%",
+            'fluency': f"{fluency:.1f}%",
+            'comprehension': f"{comprehension:.1f}%",
+            'speech_features': audio_features
+        }
+    
+    def _calculate_comprehension(self, text, clarity, fluency):
+        """이해도 계산"""
+        base_score = (clarity + fluency) / 2
+        
+        # 키워드 분석
+        reading_keywords = [
+            '토끼', '거북이', '개미', '베짱이', '돼지', '늑대',
+            '집', '달리기', '여름', '겨울', '벽돌', '짚', '나무'
+        ]
+        
+        keyword_count = sum(1 for keyword in reading_keywords if keyword in text)
+        content_bonus = min(20, keyword_count * 5)
+        
+        # 문장 구조
+        structure_bonus = 0
+        if len(text) > 15:
+            structure_bonus += 5
+        if any(punct in text for punct in '.!?'):
+            structure_bonus += 5
+        
+        comprehension = base_score + content_bonus + structure_bonus
+        return max(50, min(95, comprehension))
+    
     def _get_error_result(self, error_msg):
-        """실제 오류 결과"""
+        """오류 결과"""
         return {
             'transcription': f'음성 인식 실패: {error_msg}',
             'duration': '0.0초',
@@ -213,103 +283,12 @@ class AudioAnalyzer:
             }
         }
     
-    def _analyze_korean_speech(self, text, whisper_result, audio_features):
-        """한국어 음성 분석 (librosa 특징 포함)"""
-
-        # 1. 기본 정보
-        word_count = len([w for w in text.split() if w.strip()])
-        duration = whisper_result.get('segments', [{}])
-        total_duration = duration[-1].get('end', 5.0) if duration else 5.0
-        
-        speaking_rate = (word_count / total_duration * 60) if total_duration > 0 else 60
-        
-        # 발음 명확도 (한국어 문자 비율 + Whisper 품질)
-        korean_chars = len([c for c in text if '\uac00' <= c <= '\ud7a3'])
-        total_chars = len(text.replace(' ', ''))
-        korean_ratio = korean_chars / total_chars if total_chars > 0 else 0
-        
-        base_clarity = 40 + (korean_ratio * 40)
-        
-        # Whisper 신뢰도 추가
-        segments = whisper_result.get('segments', [])
-        if segments:
-            avg_logprob = sum(s.get('avg_logprob', -1) for s in segments) / len(segments)
-            whisper_bonus = max(0, (avg_logprob + 1) * 20)
-            base_clarity += whisper_bonus
-        
-        pronunciation_clarity = max(50, min(95, base_clarity))
-
-        # ✅ 3. 유창성 (librosa 기반으로 개선)
-        speech_ratio = audio_features['speech_ratio']
-        
-        # 발화 비율 점수 (발화가 많을수록 좋음)
-        speech_score =speech_ratio * 60  # 0~60점
-
-        # 말하기 속도 점수
-        if 80 <= speaking_rate <= 180:
-            speed_score = 30  # 적정 속도
-        else:
-            speed_score = 15  # 너무 빠르거나 느림
-        
-        # 문장 완성도
-        sentence_bonus = 0
-        if '.' in text or '!' in text or '?' in text:
-            sentence_bonus += 5
-        if len(text) > 15:
-            sentence_bonus += 5
-        
-        fluency = min(95, max(30, speech_score + speed_score + sentence_bonus))
-        
-        # 이해도 (내용 분석)
-        comprehension = self._calculate_comprehension(text, pronunciation_clarity, fluency)
-        
-        return {
-            'transcription': text,
-            'duration': f"{total_duration:.1f}초",
-            'word_count': word_count,
-            'speaking_rate': f"{speaking_rate:.1f} 단어/분",
-            'pronunciation_clarity': f"{pronunciation_clarity:.1f}%",
-            'fluency': f"{fluency:.1f}%",
-            'comprehension': f"{comprehension:.1f}%",
-            'speech_features': {
-                'avg_pitch': audio_features['avg_pitch'],
-                'pitch_variation': audio_features['pitch_variation'],
-                'avg_volume': audio_features['avg_volume'],
-                'volume_variation': audio_features['volume_variation'],
-                'speech_ratio': audio_features['speech_ratio']
-            }
-        }
-    
-    def _calculate_comprehension(self, text, clarity, fluency):
-        """이해도 계산 - 내용 기반"""
-        base_score = (clarity + fluency) / 2
-        
-        # 독서 관련 키워드 분석
-        reading_keywords = [
-            '독서', '책', '읽', '이야기', '내용', '생각', '느낌',
-            '재미', '흥미', '배우', '알', '좋', '재밌', '신기',
-            '등장인물', '주인공', '줄거리', '문장', '단어', '의미'
-        ]
-        
-        keyword_count = sum(1 for keyword in reading_keywords if keyword in text)
-        content_bonus = min(20, keyword_count * 3)
-        
-        # 문장 구조 분석
-        structure_bonus = 0
-        if len(text) > 20:
-            structure_bonus += 5
-        if any(punct in text for punct in '.!?'):
-            structure_bonus += 5
-        if '그래서' in text or '왜냐하면' in text or '하지만' in text:
-            structure_bonus += 5
-        
-        comprehension = base_score + content_bonus + structure_bonus
-        return max(30, min(95, comprehension))
-    
     def _get_realistic_dummy(self):
-        """현실적인 더미 결과"""
+        """더미 결과"""
         dummy_responses = [
-            "아기돼지삼형제가 집을 지었어요. 첫째는 짚으로 둘째는 나무로 지었어요. 셋째는 벽돌로 튼튼하게지었어요."
+            "토끼와 거북이가 달리기를 했어요",
+            "개미는 여름에 열심히 일했어요",
+            "아기돼지 삼형제가 집을 지었어요"
         ]
         
         text = random.choice(dummy_responses)
@@ -335,7 +314,7 @@ class AudioAnalyzer:
     def _get_short_audio_result(self):
         """짧은 음성 결과"""
         return {
-            'transcription': '녹음 시간이 너무 짧습니다.',
+            'transcription': '녹음 시간이 너무 짧습니다',
             'duration': '1.5초',
             'word_count': 0,
             'speaking_rate': '0.0 단어/분',

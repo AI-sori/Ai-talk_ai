@@ -4,14 +4,27 @@
 
 from flask import Flask, render_template, request, jsonify
 import cv2
-import json
 import sys
-import os
 import base64
 import numpy as np
 import pymysql
 import gc
 from datetime import datetime, timedelta
+import os
+import json
+
+# Google Cloud 인증 설정
+if 'GOOGLE_APPLICATION_CREDENTIALS_JSON' in os.environ:
+    # Railway 환경변수에서 JSON 읽기
+    creds_json = os.environ['GOOGLE_APPLICATION_CREDENTIALS_JSON']
+    
+    # 임시 파일로 저장
+    with open('/tmp/google-credentials.json', 'w') as f:
+        f.write(creds_json)
+    
+    # 환경변수 설정
+    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = '/tmp/google-credentials.json'
+    print("[INFO] Google Cloud 인증 설정 완료")
 
 # =============================================================================
 # 1. 모듈 임포트 및 초기화

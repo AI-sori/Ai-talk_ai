@@ -5,7 +5,7 @@ mediapipe==0.10.7
 numpy==1.24.3
 
 # 음성 인식용
-openai-whisper==20231117
+google-cloud-speech==2.21.0
 librosa==0.10.1
 soundfile==0.12.1
 

@@ -62,16 +62,16 @@ class AudioAnalyzer:
             
             # ✅ Google Speech API로 음성 인식
             print("[INFO] Google Speech API 음성 인식 시작...")
-            text = self._google_speech_recognize(temp_path)
-            
+            text, confidence = self._google_speech_recognize(temp_path)  # ← confidence 받기
+
             if not text or len(text) < 3:
                 print("[WARN] 인식된 텍스트가 너무 짧음")
                 return self._get_short_audio_result()
             
-            print(f"[SUCCESS] 인식 완료: {text}")
+            print(f"[SUCCESS] 인식 완료: {text} (신뢰도: {confidence:.2%})")
             
             # 분석 수행
-            analysis = self._analyze_korean_speech(text, audio_features)
+            analysis = self._analyze_korean_speech(text, audio_features, confidence)  # ← 추가
             print(f"[SUCCESS] 음성 분석 완료")
             return analysis
             
@@ -127,18 +127,18 @@ class AudioAnalyzer:
             # 결과 추출
             if not response.results:
                 print("[WARN] 인식 결과 없음")
-                return ""
+                return "", 0.0 #confidence 추가!
             
             text = response.results[0].alternatives[0].transcript
             confidence = response.results[0].alternatives[0].confidence
             
             print(f"[DEBUG] 인식 신뢰도: {confidence:.2%}")
             
-            return text.strip()
+            return text.strip(), confidence  # ← 둘 다 반환!
             
         except Exception as e:
             print(f"[ERROR] Google Speech 인식 실패: {e}")
-            return ""
+            return "", 0.0
     
     def _extract_audio_features(self, audio_path):
         """librosa로 음성 특징 추출"""
@@ -201,7 +201,7 @@ class AudioAnalyzer:
                 'speech_frames': 0
             }
     
-    def _analyze_korean_speech(self, text, audio_features):
+    def _analyze_korean_speech(self, text, audio_features, confidence): 
         """한국어 음성 분석"""
         
         # 기본 정보
@@ -209,23 +209,37 @@ class AudioAnalyzer:
         duration = len(text) / 5  # 대략 추정
         speaking_rate = (word_count / duration * 60) if duration > 0 else 60
         
-        # 발음 명확도 (librosa 기반)
+        # ===== 1. 명확도 (또박또박 말하기) =====
+        # Google 신뢰도 기반 (핵심!)
+        confidence_score = confidence * 70  # 0~70점
+        
+        # 텍스트 길이 보너스
+        if len(text) >= 10:
+            length_bonus = 20
+        elif len(text) >= 5:
+            length_bonus = 10
+        else:
+            length_bonus = 5
+        
+        # 단어 수 보너스
+        word_bonus = min(10, word_count * 3)
+        
+        pronunciation_clarity = min(95, max(50, confidence_score + length_bonus + word_bonus))
+        
+        
+        # ===== 2. 유창성 (막힘없이 자연스럽게) =====
         speech_ratio = audio_features['speech_ratio']
-        volume_score = min(30, audio_features['avg_volume'] * 300)
-        clarity_base = speech_ratio * 60
-        pronunciation_clarity = min(95, max(50, clarity_base + volume_score))
+        flow_score = speech_ratio * 50
         
-        # 유창성
-        fluency_base = speech_ratio * 50
-        pitch_bonus = min(25, audio_features['pitch_variation'] / 2)
+        pitch_bonus = min(25, audio_features['pitch_variation'] / 10)
         
-        # 속도 점수
-        if 80 <= speaking_rate <= 180:
+        if 60 <= speaking_rate <= 150:
             speed_score = 20
         else:
             speed_score = 10
         
-        fluency = min(95, max(50, fluency_base + pitch_bonus + speed_score))
+        fluency = min(95, max(50, flow_score + pitch_bonus + speed_score))
+        
         
         # 이해도
         comprehension = self._calculate_comprehension(text, pronunciation_clarity, fluency)

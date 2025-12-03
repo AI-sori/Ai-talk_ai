@@ -544,9 +544,10 @@ def generate_report():
 # =============================================================================
 # 9. PDF 생성 관련 
 # =============================================================================
+
 @app.route('/download_pdf_report', methods=['POST'])
 def download_pdf_report():
-    """PDF 리포트 생성 (최종 완성판)"""
+    """PDF 리포트 생성 (두 페이지 버전 + 말한 내용 위치 수정)"""
     global tracking_results
     
     try:
@@ -556,13 +557,15 @@ def download_pdf_report():
         audio_result = data.get('audio_result', {})
         
         print(f"[INFO] PDF 생성 시작: {child_name}")
-        
-        # 데이터 수집
+
+        # 1. 데이터 계산 (그대로 유지)
+        # -----------------------------
         if tracking_results:
             total_time = len(tracking_results) * 0.5
-            left_count = sum(1 for r in tracking_results if r['gaze_direction'] == 'left')
             center_count = sum(1 for r in tracking_results if r['gaze_direction'] == 'center')
+            left_count = sum(1 for r in tracking_results if r['gaze_direction'] == 'left')
             right_count = sum(1 for r in tracking_results if r['gaze_direction'] == 'right')
+
             concentration_score = (center_count / len(tracking_results) * 100)
             direction_changes = sum(1 for i in range(1, len(tracking_results)) 
                                   if tracking_results[i]['gaze_direction'] != tracking_results[i-1]['gaze_direction'])
@@ -581,8 +584,8 @@ def download_pdf_report():
         word_count = audio_result.get('word_count', 0)
         
         level_info = calculate_level_and_issues(concentration_score, clarity, fluency_score)
-        
-        # 시선 패턴 분석
+
+        # 분석 구문 (그대로)
         issues = []
         if concentration_score < 40:
             issues.append("심각한 집중력 부족")
@@ -592,14 +595,12 @@ def download_pdf_report():
             issues.append("독서 속도 느림")
         issues_text = ", ".join(issues) if issues else "정상적인 시선 패턴"
         
-        # 레벨
         speed_level = "빠름" if reading_speed >= 50 else "적당" if reading_speed >= 20 else "느림"
         concentration_level = "높음" if concentration_score >= 70 else "보통" if concentration_score >= 40 else "주의필요"
         comprehension_level = "매우좋음" if comprehension >= 80 else "보통" if comprehension >= 60 else "연습필요"
-        
         clarity_level = "명확함" if clarity >= 80 else "괜찮음" if clarity >= 60 else "연습필요"
         fluency_level = "매우좋음" if fluency_score >= 80 else "좋음" if fluency_score >= 60 else "연습필요"
-        
+
         # 피드백
         if concentration_score < 40:
             feedback_text = "집중력 연습이 필요해요! 짧은 시간부터 시작해보세요"
@@ -609,51 +610,52 @@ def download_pdf_report():
             feedback_text = "발음과 말하기 연습을 더 해보세요! 천천히 또박또박"
         else:
             feedback_text = "정말 잘하고 있어요! 계속 꾸준히 읽어보세요"
-        
+
         # 권장 활동
         recommended_activities = []
         if concentration_score < 60:
             recommended_activities.extend(["15분 단위 집중 독서 연습", "시각적 집중력 향상 게임"])
         if not recommended_activities:
             recommended_activities = ["현재 수준 유지", "정기적인 독서 습관"]
-        
-        # PDF 생성
+
+        # -----------------------------
+        # PDF 작성 시작
         from reportlab.lib.pagesizes import A4
         from reportlab.pdfgen import canvas
         from reportlab.lib import colors
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
-        import io
-        import urllib.request
-        import os
+        import io, urllib.request, os
         
-        # 한글 폰트
+        # 폰트
         font_path = '/tmp/NotoSansKR.ttf'
         if not os.path.exists(font_path):
             font_url = 'https://github.com/google/fonts/raw/main/ofl/notosanskr/NotoSansKR%5Bwght%5D.ttf'
             urllib.request.urlretrieve(font_url, font_path)
         
         pdfmetrics.registerFont(TTFont('NotoSans', font_path))
-        
+        pdfmetrics.registerFont(TTFont('NotoSans-Bold', font_path))
+
         buffer = io.BytesIO()
         pdf = canvas.Canvas(buffer, pagesize=A4)
         width, height = A4
-        
+
+        # --------------  페이지 1: 요약 + 세부 분석 -----------------
         # ===== 헤더 =====
         pdf.setFillColor(colors.HexColor('#667EEA'))
         pdf.rect(0, height-140, width, 140, fill=True, stroke=False)
         
         pdf.setFillColor(colors.white)
-        pdf.setFont("Helvetica-Bold", 26)
+        pdf.setFont("NotoSans-Bold", 26)
         pdf.drawString(50, height-50, "읽기 능력 분석 리포트")
-        
+
         pdf.setFont("NotoSans", 13)
         pdf.drawString(50, height-80, f"아동: {child_name}")
         pdf.drawString(50, height-100, f"진단날짜: {datetime.now().strftime('%Y.%m.%d')}")
         pdf.drawString(50, height-120, f"총 읽기시간: {total_time:.0f}초 (집중시간: {focus_time:.0f}초)")
-        
-        y = height - 180
-        
+
+        y = height - 170
+
         # ===== 레벨 배지 =====
         level_colors = {
             'advanced': colors.HexColor('#10B981'),
@@ -665,178 +667,189 @@ def download_pdf_report():
             'intermediate': '보통',
             'beginner': '노력 필요'
         }
-        
         level_color = level_colors.get(level_info['level'], colors.grey)
-        
+
         pdf.setFillColor(colors.HexColor('#F9FAFB'))
         pdf.roundRect(200, y-15, 200, 60, 12, fill=True, stroke=False)
-        
+
         pdf.setFillColor(level_color)
-        pdf.setFont("Helvetica-Bold", 20)
-        level_text = level_names.get(level_info['level'], level_info['level'])
-        pdf.drawCentredString(300, y+20, f"레벨: {level_text}")
-        
-        pdf.setFillColor(colors.HexColor('#6B7280'))
-        pdf.setFont("Helvetica-Bold", 14)
+        pdf.setFont("NotoSans-Bold", 20)
+        pdf.drawCentredString(300, y+20, f"레벨: {level_names[level_info['level']]}")
+
+        pdf.setFillColor(colors.HexColor('#374151'))
+        pdf.setFont("NotoSans-Bold", 14)
         pdf.drawCentredString(300, y, f"종합 점수: {level_info['total_score']}%")
-        
-        y -= 100
-        
+
+        y -= 85
+
         # ===== 읽기 능력 분석 =====
-        pdf.setFont("Helvetica-Bold", 16)
+        pdf.setFont("NotoSans-Bold", 16)
         pdf.setFillColor(colors.HexColor('#1F2937'))
         pdf.drawString(50, y, "읽기 능력 분석")
         y -= 35
-        
-        # 3개 지표 카드
+
+        # 점수 카드 (그대로)
+        card_width = 155
+        card_height = 90
+        spacing = 15
+
         scores_data = [
             ("집중력", concentration_score, colors.HexColor('#3B82F6')),
             ("발음 명확도", clarity, colors.HexColor('#8B5CF6')),
             ("유창성", fluency_score, colors.HexColor('#EC4899'))
         ]
-        
-        card_width = 155
-        card_height = 90
-        spacing = 15
-        
+
         for i, (label, score, color) in enumerate(scores_data):
             x = 50 + i * (card_width + spacing)
-            
+
             pdf.setFillColor(colors.HexColor('#E5E7EB'))
             pdf.roundRect(x+2, y-card_height-2, card_width, card_height, 10, fill=True, stroke=False)
-            
+
             pdf.setFillColor(colors.white)
             pdf.roundRect(x, y-card_height, card_width, card_height, 10, fill=True, stroke=False)
-            
+
             pdf.setFillColor(color)
             pdf.setFont("Helvetica-Bold", 32)
             pdf.drawCentredString(x + card_width/2, y-38, f"{score:.0f}")
-            
+
             pdf.setFont("Helvetica", 12)
             pdf.drawCentredString(x + card_width/2, y-55, "%")
-            
-            pdf.setFillColor(colors.HexColor('#4B5563'))
-            pdf.setFont("NotoSans", 12)
+
+            pdf.setFillColor(colors.HexColor('#374151'))
+            pdf.setFont("NotoSans-Bold", 12)
             pdf.drawCentredString(x + card_width/2, y-75, label)
-        
-        y -= 130
-        
-        # ===== 세부 분석 =====
+
+        y -= 115
+
+
+        # ===== 세부 분석 (회색 박스) =====
         pdf.setFillColor(colors.HexColor('#1F2937'))
-        pdf.setFont("Helvetica-Bold", 14)
+        pdf.setFont("NotoSans-Bold", 14)
         pdf.drawString(50, y, "세부 분석")
         y -= 30
-        
-        # 회색 박스 (높이 증가)
+
         pdf.setFillColor(colors.HexColor('#F3F4F6'))
-        pdf.roundRect(50, y-200, 500, 200, 8, fill=True, stroke=False)
-        
-        # 시선 추적 결과
+        pdf.roundRect(50, y-180, 500, 180, 8, fill=True, stroke=False)
+
+        # --- 왼쪽: 시선 분석 ---
         pdf.setFillColor(colors.HexColor('#1F2937'))
-        pdf.setFont("Helvetica-Bold", 12)
+        pdf.setFont("NotoSans-Bold", 12)
         pdf.drawString(65, y-25, "시선 추적 결과:")
+
         pdf.setFont("NotoSans", 10)
         pdf.setFillColor(colors.HexColor('#374151'))
-        pdf.drawString(75, y-45, f"• 읽기 속도: {speed_level}")
-        pdf.drawString(75, y-60, f"• 집중력: {concentration_level}")
-        pdf.drawString(75, y-75, f"• 이해력: {comprehension_level}")
-        
-        # 음성 분석 결과
+        pdf.drawString(75, y-43, f"• 읽기 속도: {speed_level}")
+        pdf.drawString(75, y-58, f"• 집중력: {concentration_level}")
+        pdf.drawString(75, y-73, f"• 이해력: {comprehension_level}")
+
+        # --- 오른쪽: 음성 분석 ---
         pdf.setFillColor(colors.HexColor('#1F2937'))
-        pdf.setFont("Helvetica-Bold", 12)
+        pdf.setFont("NotoSans-Bold", 12)
         pdf.drawString(300, y-25, "음성 분석 결과:")
+
         pdf.setFont("NotoSans", 10)
         pdf.setFillColor(colors.HexColor('#374151'))
-        pdf.drawString(310, y-45, f"• 발음 명확도: {clarity_level} ({clarity:.1f}%)")
-        pdf.drawString(310, y-60, f"• 유창성: {fluency_level} ({fluency_score:.1f}%)")
-        pdf.drawString(310, y-75, f"• 말하기 속도: {speaking_rate}")
-        
-        # 시선 패턴
+        pdf.drawString(310, y-43, f"• 발음 명확도: {clarity_level} ({clarity:.1f}%)")
+        pdf.drawString(310, y-58, f"• 유창성: {fluency_level} ({fluency_score:.1f}%)")
+        pdf.drawString(310, y-73, f"• 말하기 속도: {speaking_rate}")
+
+        # --- 시선 패턴 ---
+        pdf.setFont("NotoSans-Bold", 11)
+        pdf.setFillColor(colors.HexColor('#1F2937'))
+        pdf.drawString(65, y-103, "시선 패턴:")
+
         pdf.setFont("NotoSans", 10)
-        pdf.drawString(65, y-105, "시선 패턴:")
-        pdf.drawString(75, y-120, issues_text)
-        
-        # 말한 내용 (구조화)
-        pdf.setFont("Helvetica-Bold", 10)
-        pdf.drawString(65, y-145, "말한 내용:")
+        pdf.drawString(75, y-118, issues_text)
+
+        # --- 말한 내용(오른쪽으로 이동) ---
+        pdf.setFont("NotoSans-Bold", 11)
+        pdf.setFillColor(colors.HexColor('#1F2937'))
+        pdf.drawString(300, y-103, "말한 내용:")
+
         pdf.setFont("NotoSans", 9)
-        pdf.drawString(75, y-160, f"• 전체 길이: {duration}")
-        pdf.drawString(75, y-173, f"• 단어 수: {word_count}단어")
-        
-        # 텍스트 줄바꿈
+        pdf.setFillColor(colors.HexColor('#374151'))
+        pdf.drawString(310, y-118, f"• 전체 길이: {duration}")
+        pdf.drawString(310, y-131, f"• 단어 수: {word_count} 단어")
+
         from textwrap import wrap
-        lines = wrap(transcription, width=70)
-        pdf.drawString(75, y-186, "• 발화:")
-        for idx, line in enumerate(lines[:1]):  # 1줄만
-            pdf.drawString(95, y-186, f'"{line}"')
-        
-        y -= 230
-        
-        # ===== 종합 피드백 (폭 줄임) =====
-        pdf.setFont("Helvetica-Bold", 14)
+        lines = wrap(transcription, width=40)
+        if lines:
+            pdf.drawString(310, y-146, f"• 발화: {lines[0]}")
+
+        # 페이지 1 끝 → 페이지 넘기기
+        pdf.showPage()
+
+        # --------------  페이지 2: 피드백 + 추천 활동 ------------------
+
+        y = height - 120  # 페이지2 시작 점
+
+        # ===== 종합 피드백 =====
+        pdf.setFont("NotoSans-Bold", 16)
         pdf.setFillColor(colors.HexColor('#1F2937'))
         pdf.drawString(50, y, "종합 피드백")
-        y -= 25
-        
+        y -= 40
+
         pdf.setFillColor(colors.HexColor('#ECFDF5'))
-        pdf.roundRect(50, y-40, 400, 40, 8, fill=True, stroke=False)  # 500→400
-        
+        pdf.roundRect(50, y-50, 500, 50, 8, fill=True, stroke=False)
+
         pdf.setFillColor(colors.HexColor('#065F46'))
         pdf.setFont("NotoSans", 11)
-        pdf.drawString(65, y-22, feedback_text)
-        
-        y -= 65
-        
-        # ===== 맞춤 추천 활동 (폭 줄임) =====
-        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(65, y-30, feedback_text)
+
+        y -= 90
+
+        # ===== 맞춤 추천 활동 =====
+        pdf.setFont("NotoSans-Bold", 16)
         pdf.setFillColor(colors.HexColor('#1F2937'))
         pdf.drawString(50, y, "맞춤 추천 활동")
-        y -= 25
-        
+        y -= 35
+
         pdf.setFillColor(colors.HexColor('#EFF6FF'))
-        pdf.roundRect(50, y-60, 400, 60, 8, fill=True, stroke=False)  # 500→400
-        
+        pdf.roundRect(50, y-70, 400, 70, 8, fill=True, stroke=False)
+
         pdf.setFillColor(colors.HexColor('#1E40AF'))
-        pdf.setFont("NotoSans", 10)
+        pdf.setFont("NotoSans", 11)
+
         for idx, activity in enumerate(recommended_activities[:3]):
-            pdf.drawString(65, y-20-idx*18, f"• {activity}")
-        
-        y -= 85
-        
+            pdf.drawString(65, y-30 - idx*20, f"• {activity}")
+
+        y -= 110
+
         # ===== 하단 정보 =====
         pdf.setStrokeColor(colors.HexColor('#E5E7EB'))
         pdf.setLineWidth(1)
         pdf.line(50, y, 550, y)
         y -= 25
-        
+
         pdf.setFillColor(colors.HexColor('#9CA3AF'))
         pdf.setFont("NotoSans", 9)
+
         pdf.drawString(50, y, f"이메일: {user_email}")
         next_date = (datetime.now() + timedelta(days=30)).strftime('%Y.%m.%d')
         pdf.drawString(50, y-15, f"다음 검사 추천일: {next_date}")
         pdf.drawRightString(550, y-15, "AI 읽기 진단 시스템")
-        
+
         pdf.save()
-        
+
         pdf_bytes = buffer.getvalue()
         pdf_data = base64.b64encode(pdf_bytes).decode('utf-8')
-        
+
         print("[SUCCESS] PDF 생성 완료")
-        
+
         return jsonify({
             "status": "success",
             "pdf_data": pdf_data,
             "filename": f"{child_name}_report_{datetime.now().strftime('%Y%m%d')}.pdf"
         })
-        
+
     except Exception as e:
         print(f"[ERROR] PDF 생성 실패: {e}")
-        import traceback
         traceback.print_exc()
         return jsonify({
             "status": "error",
             "message": str(e)
         })
+
 # =============================================================================
 # 10. Spring 연동 테스트
 # =============================================================================

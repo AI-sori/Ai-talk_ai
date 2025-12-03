@@ -601,8 +601,9 @@ ${r.feedback.recommended_activities.slice(0, 4).map(activity => `• ${activity}
 }
 
 // 리포트 다운로드
-// main.js에서 downloadPDFReport 함수 수정
 async function downloadPDFReport() {
+    // 이미 다운로드 중이면 무시
+    if (el.downloadReportBtn.disabled) return;
     const childName = el.childName.value.trim();
     const userEmail = el.userEmail.value.trim();
     
@@ -687,6 +688,11 @@ async function downloadPDFReport() {
             
             URL.revokeObjectURL(downloadUrl);
             updateStatus('✅ PDF 다운로드 완료!', 'success');
+
+            // 3초 후 버튼 재활성화
+            setTimeout(() => {
+                el.downloadReportBtn.disabled = false;
+            }, 3000);
             
         } else {
             console.error('[ERROR] 서버 오류:', result.message);

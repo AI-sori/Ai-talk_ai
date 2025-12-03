@@ -547,13 +547,122 @@ def generate_report():
 
 @app.route('/download_pdf_report', methods=['POST'])
 def download_pdf_report():
-    """PDF 리포트 생성"""
-    try:
-        # ... PDF 생성 로직 (길어서 생략, 필요 시 유지) ...
-        return jsonify({"status": "success", "message": "PDF 기능은 프론트엔드에서 처리됩니다"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)})
+    """PDF 리포트 생성 및 다운로드"""
+    global tracking_results
     
+    try:
+        data = request.json
+        child_name = data.get('child_name', 'Unknown')
+        user_email = data.get('user_email', 'unknown@example.com')
+        audio_result = data.get('audio_result', {})
+        
+        print(f"[INFO] PDF 생성 시작: {child_name}")
+        
+        # 시선 추적 분석 (generate_report와 동일)
+        if tracking_results:
+            total_time = len(tracking_results) * 0.5
+            center_count = sum(1 for r in tracking_results if r['gaze_direction'] == 'center')
+            concentration_score = (center_count / len(tracking_results) * 100)
+        else:
+            total_time = 0
+            concentration_score = 0
+        
+        # 음성 분석 결과
+        clarity = float(audio_result.get('pronunciation_clarity', '0').replace('%', ''))
+        fluency_score = float(audio_result.get('fluency', '0').replace('%', ''))
+        transcription = audio_result.get('transcription', 'N/A')
+        
+        # 레벨 계산
+        level_info = calculate_level_and_issues(concentration_score, clarity, fluency_score)
+        
+        # PDF 생성
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        import io
+        
+        buffer = io.BytesIO()
+        pdf = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+        
+        # 한글 폰트 (기본 폰트 사용)
+        y = height - 50
+        
+        # 제목
+        pdf.setFont("Helvetica-Bold", 20)
+        pdf.drawString(50, y, f"{child_name} Reading Analysis Report")
+        y -= 40
+        
+        # 날짜
+        pdf.setFont("Helvetica", 12)
+        pdf.drawString(50, y, f"Date: {datetime.now().strftime('%Y-%m-%d')}")
+        y -= 30
+        
+        # 레벨
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(50, y, f"Level: {level_info['level'].upper()}")
+        y -= 20
+        pdf.setFont("Helvetica", 12)
+        pdf.drawString(50, y, f"Total Score: {level_info['total_score']}%")
+        y -= 40
+        
+        # 3대 지표
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(50, y, "Scores:")
+        y -= 25
+        pdf.setFont("Helvetica", 12)
+        pdf.drawString(70, y, f"Concentration: {concentration_score:.1f}%")
+        y -= 20
+        pdf.drawString(70, y, f"Clarity: {clarity:.1f}%")
+        y -= 20
+        pdf.drawString(70, y, f"Fluency: {fluency_score:.1f}%")
+        y -= 40
+        
+        # 약점
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(50, y, "Weak Area:")
+        y -= 25
+        pdf.setFont("Helvetica", 12)
+        pdf.drawString(70, y, level_info['weak_area'])
+        y -= 40
+        
+        # 음성 텍스트
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(50, y, "Speech Transcription:")
+        y -= 25
+        pdf.setFont("Helvetica", 10)
+        
+        # 긴 텍스트 줄바꿈
+        from textwrap import wrap
+        lines = wrap(transcription, width=80)
+        for line in lines[:5]:  # 최대 5줄
+            pdf.drawString(70, y, line)
+            y -= 15
+        
+        # 저장
+        pdf.save()
+        
+        # Base64 인코딩
+        pdf_bytes = buffer.getvalue()
+        pdf_data = base64.b64encode(pdf_bytes).decode('utf-8')
+        
+        print("[SUCCESS] PDF 생성 완료")
+        
+        return jsonify({
+            "status": "success",
+            "pdf_data": pdf_data,
+            "filename": f"{child_name}_report_{datetime.now().strftime('%Y%m%d')}.pdf"
+        })
+        
+    except Exception as e:
+        print(f"[ERROR] PDF 생성 실패: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        })
 # =============================================================================
 # 10. Spring 연동 테스트
 # =============================================================================
